@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  trading-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading-performance-analyzer
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot reload during development
+      - .:/app
+      # Persist uploaded files and results
+      - ./uploads:/app/uploads
+      # Optional: Mount static files for easy editing
+      - ./static:/app/static
+      - ./templates:/app/templates
+    environment:
+      - ENV=development
+      - PYTHONPATH=/app
+      - MAX_FILE_SIZE=10485760  # 10MB in bytes
+      - SESSION_TIMEOUT=86400   # 24 hours in seconds
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - trading-network
+
+  # Optional: Add Redis for session storage (uncomment for production-like setup)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: trading-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   command: redis-server --appendonly yes
+  #   networks:
+  #     - trading-network
+
+networks:
+  trading-network:
+    driver: bridge
+
+# Optional: Define volumes for persistent data
+# volumes:
+#   redis_data:
+#     driver: local

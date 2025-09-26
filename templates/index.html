@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Upload IBKR CSV - Trading Performance Analyzer{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <!-- Hero Section -->
+        <div class="text-center mb-5">
+            <h1 class="display-4 text-primary">Trading Performance Analyzer</h1>
+            <p class="lead text-muted">Upload your IBKR trades CSV to analyze your trading performance with detailed metrics and visualizations.</p>
+        </div>
+
+        <!-- Upload Card -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-cloud-upload me-2"></i>
+                    Upload IBKR Trades CSV
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- Upload Form -->
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="csvFile" class="form-label">Select CSV File</label>
+                        <input class="form-control" type="file" id="csvFile" name="file" accept=".csv" required>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Maximum file size: 10MB. Supported format: CSV only.
+                        </div>
+                    </div>
+
+                    <!-- Drag and Drop Area -->
+                    <div id="dropArea" class="border-2 border-dashed border-secondary rounded p-4 text-center text-muted mb-3">
+                        <i class="bi bi-cloud-upload display-4 mb-3"></i>
+                        <p class="mb-2">Drag and drop your CSV file here</p>
+                        <p class="small">or click browse to select a file</p>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100" id="uploadBtn">
+                        <i class="bi bi-upload me-2"></i>
+                        Analyze Performance
+                    </button>
+                </form>
+
+                <!-- Progress Bar -->
+                <div class="mt-3">
+                    <div id="progressContainer" class="d-none">
+                        <div class="progress">
+                            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="text-center mt-2">
+                            <small id="progressText" class="text-muted">Processing...</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alert Area -->
+                <div id="alertArea" class="mt-3"></div>
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="row mt-5">
+            <div class="col-md-4">
+                <div class="card h-100 border-0">
+                    <div class="card-body text-center">
+                        <i class="bi bi-graph-up text-primary display-4 mb-3"></i>
+                        <h5 class="card-title">Performance Metrics</h5>
+                        <p class="card-text text-muted">Detailed analysis of your trading performance including win rates, profit/loss ratios, and more.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0">
+                    <div class="card-body text-center">
+                        <i class="bi bi-calendar3 text-primary display-4 mb-3"></i>
+                        <h5 class="card-title">Time-Based Analysis</h5>
+                        <p class="card-text text-muted">View your performance across different time periods: monthly, quarterly, and yearly.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0">
+                    <div class="card-body text-center">
+                        <i class="bi bi-download text-primary display-4 mb-3"></i>
+                        <h5 class="card-title">Export Options</h5>
+                        <p class="card-text text-muted">Export your results to CSV, Excel, or generate comprehensive PDF reports.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="card mt-5">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-question-circle me-2"></i>
+                    How to Use
+                </h5>
+            </div>
+            <div class="card-body">
+                <ol class="mb-0">
+                    <li class="mb-2">
+                        <strong>Export your trades from IBKR:</strong>
+                        Log into your Interactive Brokers account and export your trade history as CSV.
+                    </li>
+                    <li class="mb-2">
+                        <strong>Required CSV columns:</strong>
+                        Symbol, TradeDate (or Date), Quantity, Price, Commission, Buy/Sell (or Side)
+                    </li>
+                    <li class="mb-2">
+                        <strong>Upload and analyze:</strong>
+                        Upload your CSV file using the form above. The system will automatically process your trades and calculate performance metrics.
+                    </li>
+                    <li>
+                        <strong>View results:</strong>
+                        Once processed, you'll be redirected to a detailed results page with charts, tables, and export options.
+                    </li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadForm = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('csvFile');
+    const dropArea = document.getElementById('dropArea');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const alertArea = document.getElementById('alertArea');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    // Drag and drop functionality
+    dropArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropArea.classList.add('border-primary');
+    });
+
+    dropArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropArea.classList.remove('border-primary');
+    });
+
+    dropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropArea.classList.remove('border-primary');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            fileInput.dispatchEvent(new Event('change'));
+        }
+    });
+
+    // Click to browse
+    dropArea.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                showAlert('Please select a CSV file.', 'warning');
+                fileInput.value = '';
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) { // 10MB
+                showAlert('File size must be less than 10MB.', 'warning');
+                fileInput.value = '';
+                return;
+            }
+
+            updateDropAreaText(`Selected: ${file.name}`);
+        }
+    });
+
+    // Form submission
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const file = fileInput.files[0];
+        if (!file) {
+            showAlert('Please select a CSV file.', 'warning');
+            return;
+        }
+
+        showProgress();
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                showAlert(result.message, 'success');
+                setTimeout(() => {
+                    window.location.href = `/results/${result.session_id}`;
+                }, 1500);
+            } else {
+                showAlert(result.detail || 'Upload failed', 'danger');
+                hideProgress();
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+            hideProgress();
+        }
+    });
+
+    function showProgress() {
+        progressContainer.classList.remove('d-none');
+        uploadBtn.disabled = true;
+        progressBar.style.width = '100%';
+        progressText.textContent = 'Processing your trades...';
+    }
+
+    function hideProgress() {
+        progressContainer.classList.add('d-none');
+        uploadBtn.disabled = false;
+        progressBar.style.width = '0%';
+    }
+
+    function showAlert(message, type) {
+        alertArea.innerHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+    }
+
+    function updateDropAreaText(text) {
+        dropArea.innerHTML = `
+            <i class="bi bi-file-earmark-check display-4 mb-3 text-success"></i>
+            <p class="mb-2">${text}</p>
+            <p class="small text-muted">Click to select a different file</p>
+        `;
+    }
+});
+</script>
+{% endblock %}
