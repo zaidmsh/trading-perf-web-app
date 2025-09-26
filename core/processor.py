@@ -17,7 +17,7 @@ COLUMN_MAP = {
     "date": ["Trade Date", "Date", "TradeDate"],
     "time": ["Trade Time", "Time"],
     "side": ["Buy/Sell", "Side"],
-    "commission": ["Commission", "Comm/Fee", "IB Commission"],
+    "commission": ["Commission", "Comm/Fee", "IBCommission"],
     "portfolio": ["Account Alias", "Account Name", "Account Id", "Account ID"],
     "code": ["Order Reference", "Order Ref", "Client Order Id", "Client Order ID"],
 }
