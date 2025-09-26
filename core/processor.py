@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Tuple
 COLUMN_MAP = {
     "symbol": ["Symbol", "Underlying Symbol", "Contract Description"],
     "quantity": ["Quantity", "Qty"],
-    "price": ["Trade Price", "Price", "T. Price"],
+    "price": ["Trade Price", "Price", "T. Price", "TradePrice"],
     "datetime": ["Trade Date/Time", "Date/Time"],
     "date": ["Trade Date", "Date", "TradeDate"],
     "time": ["Trade Time", "Time"],
