@@ -40,41 +40,63 @@ async def home(request: Request):
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    """Upload and process IBKR CSV file"""
-    # Validate file
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Please upload a CSV file")
+async def upload_file(files: list[UploadFile] = File(...)):
+    """Upload and process multiple IBKR CSV files"""
+    # Validate files
+    if not files:
+        raise HTTPException(status_code=400, detail="Please upload at least one CSV file")
 
-    if file.size > 10 * 1024 * 1024:  # 10MB limit
-        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    for file in files:
+        if not file.filename.endswith('.csv'):
+            raise HTTPException(status_code=400, detail=f"File {file.filename} is not a CSV file")
+
+        if file.size > 10 * 1024 * 1024:  # 10MB limit per file
+            raise HTTPException(status_code=400, detail=f"File {file.filename} is too large (max 10MB)")
 
     try:
-        # Read file content
-        content = await file.read()
-        csv_content = content.decode('utf-8')
+        all_roundtrips = []
+        filenames = []
 
-        # Process the CSV
-        roundtrips_df = process_ibkr_csv(csv_content)
+        # Process each CSV file
+        for file in files:
+            # Read file content
+            content = await file.read()
+            csv_content = content.decode('utf-8')
 
-        if roundtrips_df.empty:
-            raise HTTPException(status_code=400, detail="No valid trades found in CSV")
+            # Process the CSV
+            roundtrips_df = process_ibkr_csv(csv_content)
 
-        # Calculate performance metrics
-        performance_data = calculate_performance(roundtrips_df)
+            if not roundtrips_df.empty:
+                all_roundtrips.append(roundtrips_df)
+                filenames.append(file.filename)
+
+        if not all_roundtrips:
+            raise HTTPException(status_code=400, detail="No valid trades found in any CSV files")
+
+        # Merge all roundtrips from multiple files
+        merged_roundtrips_df = pd.concat(all_roundtrips, ignore_index=True)
+
+        # Sort by entry date to ensure chronological order
+        if 'entry_date' in merged_roundtrips_df.columns:
+            merged_roundtrips_df = merged_roundtrips_df.sort_values('entry_date')
+            merged_roundtrips_df = merged_roundtrips_df.reset_index(drop=True)
+
+        # Calculate performance metrics on merged data
+        performance_data = calculate_performance(merged_roundtrips_df)
 
         # Generate unique session ID
         session_id = str(uuid.uuid4())
 
         # Convert timestamps to strings for JSON serialization
-        roundtrips_serializable = roundtrips_df.copy()
+        roundtrips_serializable = merged_roundtrips_df.copy()
         for col in roundtrips_serializable.columns:
             if roundtrips_serializable[col].dtype.name.startswith('datetime'):
                 roundtrips_serializable[col] = roundtrips_serializable[col].dt.strftime('%Y-%m-%d')
 
         # Store results
         results_store[session_id] = {
-            "filename": file.filename,
+            "filename": ", ".join(filenames),
+            "files_count": len(filenames),
             "upload_time": datetime.now().isoformat(),
             "roundtrips": roundtrips_serializable.to_dict('records'),
             "performance": performance_data
@@ -83,11 +105,11 @@ async def upload_file(file: UploadFile = File(...)):
         return JSONResponse({
             "success": True,
             "session_id": session_id,
-            "message": f"Processed {len(roundtrips_df)} roundtrips successfully"
+            "message": f"Processed {len(filenames)} file(s) with {len(merged_roundtrips_df)} total roundtrips"
         })
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error processing files: {str(e)}")
 
 
 @app.get("/results/{session_id}", response_class=HTMLResponse)

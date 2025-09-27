@@ -23,19 +23,19 @@
                 <!-- Upload Form -->
                 <form id="uploadForm" enctype="multipart/form-data">
                     <div class="mb-3">
-                        <label for="csvFile" class="form-label">Select CSV File</label>
-                        <input class="form-control" type="file" id="csvFile" name="file" accept=".csv" required>
+                        <label for="csvFile" class="form-label">Select CSV Files (Multiple files supported)</label>
+                        <input class="form-control" type="file" id="csvFile" name="files" accept=".csv" multiple required>
                         <div class="form-text">
                             <i class="bi bi-info-circle me-1"></i>
-                            Maximum file size: 10MB. Supported format: CSV only.
+                            Select multiple CSV files to analyze multi-year performance. Max 10MB per file.
                         </div>
                     </div>
 
                     <!-- Drag and Drop Area -->
                     <div id="dropArea" class="border-2 border-dashed border-secondary rounded p-4 text-center text-muted mb-3">
                         <i class="bi bi-cloud-upload display-4 mb-3"></i>
-                        <p class="mb-2">Drag and drop your CSV file here</p>
-                        <p class="small">or click browse to select a file</p>
+                        <p class="mb-2">Drag and drop your CSV files here</p>
+                        <p class="small">or click browse to select files (multiple files supported)</p>
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100" id="uploadBtn">
@@ -105,7 +105,7 @@
                 <ol class="mb-0">
                     <li class="mb-2">
                         <strong>Export your trades from IBKR:</strong>
-                        Log into your Interactive Brokers account and export your trade history as CSV.
+                        Log into your Interactive Brokers account and export your trade history as CSV. You can upload multiple CSV files (one per year) for multi-year analysis.
                     </li>
                     <li class="mb-2">
                         <strong>Required CSV columns:</strong>
@@ -167,21 +167,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // File input change
     fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-                showAlert('Please select a CSV file.', 'warning');
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            let invalidFiles = [];
+            let largeFiles = [];
+
+            files.forEach(file => {
+                if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                    invalidFiles.push(file.name);
+                }
+                if (file.size > 10 * 1024 * 1024) { // 10MB
+                    largeFiles.push(file.name);
+                }
+            });
+
+            if (invalidFiles.length > 0) {
+                showAlert(`Non-CSV files detected: ${invalidFiles.join(', ')}. Please select only CSV files.`, 'warning');
                 fileInput.value = '';
                 return;
             }
 
-            if (file.size > 10 * 1024 * 1024) { // 10MB
-                showAlert('File size must be less than 10MB.', 'warning');
+            if (largeFiles.length > 0) {
+                showAlert(`Files too large (>10MB): ${largeFiles.join(', ')}`, 'warning');
                 fileInput.value = '';
                 return;
             }
 
-            updateDropAreaText(`Selected: ${file.name}`);
+            const fileNames = files.map(f => f.name).join(', ');
+            updateDropAreaText(`Selected ${files.length} file(s): ${fileNames}`);
         }
     });
 
@@ -189,16 +202,19 @@ document.addEventListener('DOMContentLoaded', function() {
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        const file = fileInput.files[0];
-        if (!file) {
-            showAlert('Please select a CSV file.', 'warning');
+        const files = fileInput.files;
+        if (!files || files.length === 0) {
+            showAlert('Please select at least one CSV file.', 'warning');
             return;
         }
 
         showProgress();
 
         const formData = new FormData();
-        formData.append('file', file);
+        // Append all files to the formdata
+        for (let i = 0; i < files.length; i++) {
+            formData.append('files', files[i]);
+        }
 
         try {
             const response = await fetch('/upload', {
@@ -249,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
         dropArea.innerHTML = `
             <i class="bi bi-file-earmark-check display-4 mb-3 text-success"></i>
             <p class="mb-2">${text}</p>
-            <p class="small text-muted">Click to select a different file</p>
+            <p class="small text-muted">Click to select different files</p>
         `;
     }
 });
