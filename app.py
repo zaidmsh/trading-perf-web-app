@@ -6,19 +6,29 @@ FastAPI backend with file upload and results display
 import os
 import uuid
 import json
+import logging
 from datetime import datetime
 from typing import Dict, Any
 import pandas as pd
 from io import BytesIO
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 from fastapi import FastAPI, UploadFile, File, Request, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import aiofiles
 
 from core.processor import process_ibkr_csv
 from core.calculator import calculate_performance
+from core.data_manager import DataManager
 
 
 app = FastAPI(title="Trading Performance Analyzer", version="1.0.0")
@@ -31,6 +41,21 @@ templates = Jinja2Templates(directory="templates")
 
 # In-memory storage for results (in production, use Redis or database)
 results_store: Dict[str, Dict[str, Any]] = {}
+
+# Initialize data manager
+data_manager = DataManager()
+
+
+# Pydantic models for request bodies
+class IBKRRequest(BaseModel):
+    token: str
+    query_id: str
+
+
+class ProcessRequest(BaseModel):
+    source: str  # 'csv' or 'ibkr'
+    token: str = None
+    query_id: str = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -246,6 +271,105 @@ async def delete_results(session_id: str):
         return {"message": "Results deleted successfully"}
     else:
         raise HTTPException(status_code=404, detail="Results not found")
+
+
+@app.post("/api/fetch-ibkr")
+async def fetch_ibkr_data(request: IBKRRequest):
+    """Fetch trades from IBKR FlexQuery API"""
+    try:
+        # Use data manager to fetch and process trades
+        result = await data_manager.get_trades(
+            source="ibkr",
+            token=request.token,
+            query_id=request.query_id
+        )
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())
+
+        # Convert timestamps to strings for JSON serialization
+        roundtrips_serializable = result["roundtrips"].copy()
+        for col in roundtrips_serializable.columns:
+            if roundtrips_serializable[col].dtype.name.startswith('datetime'):
+                roundtrips_serializable[col] = roundtrips_serializable[col].dt.strftime('%Y-%m-%d')
+
+        # Store results in the same format as CSV upload
+        results_store[session_id] = {
+            "filename": f"IBKR FlexQuery {request.query_id}",
+            "files_count": 1,
+            "upload_time": datetime.now().isoformat(),
+            "roundtrips": roundtrips_serializable.to_dict('records'),
+            "performance": result["performance"]
+        }
+
+        return JSONResponse({
+            "success": True,
+            "session_id": session_id,
+            "message": f"Fetched {len(result['roundtrips'])} roundtrips from IBKR"
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/test-ibkr")
+async def test_ibkr_connection(request: IBKRRequest):
+    """Test IBKR FlexQuery connection"""
+    try:
+        result = await data_manager.test_ibkr_connection(request.token, request.query_id)
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "message": f"Connection test failed: {str(e)}"
+        })
+
+
+@app.post("/api/process-data")
+async def process_data(request: ProcessRequest, files: list[UploadFile] = File(None)):
+    """Unified endpoint for processing data from different sources"""
+    try:
+        if request.source == "csv":
+            if not files:
+                raise HTTPException(status_code=400, detail="No files provided for CSV source")
+
+            result = await data_manager.get_trades(source="csv", files=files)
+            source_info = f"{len(files)} CSV file(s)"
+
+        elif request.source == "ibkr":
+            if not request.token or not request.query_id:
+                raise HTTPException(status_code=400, detail="Token and Query ID required for IBKR source")
+
+            result = await data_manager.get_trades(
+                source="ibkr",
+                token=request.token,
+                query_id=request.query_id
+            )
+            source_info = f"IBKR FlexQuery {request.query_id}"
+
+        else:
+            raise HTTPException(status_code=400, detail="Invalid source type")
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())
+
+        # Store results
+        results_store[session_id] = {
+            "filename": source_info,
+            "files_count": 1,
+            "upload_time": datetime.now().isoformat(),
+            "roundtrips": result["roundtrips"].to_dict('records'),
+            "performance": result["performance"]
+        }
+
+        return JSONResponse({
+            "success": True,
+            "session_id": session_id,
+            "message": f"Processed {len(result['roundtrips'])} roundtrips from {source_info}"
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # Background task to clean up old results (run periodically in production)

@@ -11,38 +11,102 @@
             <p class="lead text-muted">Upload your IBKR trades CSV to analyze your trading performance with detailed metrics and visualizations.</p>
         </div>
 
-        <!-- Upload Card -->
+        <!-- Data Source Selection Card -->
         <div class="card shadow-sm">
             <div class="card-header bg-primary text-white">
                 <h5 class="card-title mb-0">
-                    <i class="bi bi-cloud-upload me-2"></i>
-                    Upload IBKR Trades CSV
+                    <i class="bi bi-database me-2"></i>
+                    Select Data Source
                 </h5>
             </div>
             <div class="card-body">
-                <!-- Upload Form -->
-                <form id="uploadForm" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label for="csvFile" class="form-label">Select CSV Files (Multiple files supported)</label>
-                        <input class="form-control" type="file" id="csvFile" name="files" accept=".csv" multiple required>
-                        <div class="form-text">
-                            <i class="bi bi-info-circle me-1"></i>
-                            Select multiple CSV files to analyze multi-year performance. Max 10MB per file.
+                <!-- Data Source Selection -->
+                <div class="mb-4">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="dataSource" id="sourceCSV" value="csv" checked>
+                                <label class="form-check-label" for="sourceCSV">
+                                    <i class="bi bi-file-earmark-text me-2"></i>
+                                    <strong>Upload CSV Files</strong>
+                                </label>
+                                <div class="form-text">Upload IBKR trade CSV files manually</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="dataSource" id="sourceIBKR" value="ibkr">
+                                <label class="form-check-label" for="sourceIBKR">
+                                    <i class="bi bi-cloud-download me-2"></i>
+                                    <strong>Fetch from IBKR</strong>
+                                </label>
+                                <div class="form-text">Use FlexQuery API to fetch trades automatically</div>
+                            </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Drag and Drop Area -->
-                    <div id="dropArea" class="border-2 border-dashed border-secondary rounded p-4 text-center text-muted mb-3">
-                        <i class="bi bi-cloud-upload display-4 mb-3"></i>
-                        <p class="mb-2">Drag and drop your CSV files here</p>
-                        <p class="small">or click browse to select files (multiple files supported)</p>
-                    </div>
+                <!-- CSV Upload Section -->
+                <div id="csvSection">
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="csvFile" class="form-label">Select CSV Files (Multiple files supported)</label>
+                            <input class="form-control" type="file" id="csvFile" name="files" accept=".csv" multiple required>
+                            <div class="form-text">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Select multiple CSV files to analyze multi-year performance. Max 10MB per file.
+                            </div>
+                        </div>
 
-                    <button type="submit" class="btn btn-primary w-100" id="uploadBtn">
-                        <i class="bi bi-upload me-2"></i>
-                        Analyze Performance
-                    </button>
-                </form>
+                        <!-- Drag and Drop Area -->
+                        <div id="dropArea" class="border-2 border-dashed border-secondary rounded p-4 text-center text-muted mb-3">
+                            <i class="bi bi-cloud-upload display-4 mb-3"></i>
+                            <p class="mb-2">Drag and drop your CSV files here</p>
+                            <p class="small">or click browse to select files (multiple files supported)</p>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100" id="uploadBtn">
+                            <i class="bi bi-upload me-2"></i>
+                            Analyze Performance
+                        </button>
+                    </form>
+                </div>
+
+                <!-- IBKR API Section -->
+                <div id="ibkrSection" style="display: none;">
+                    <form id="ibkrForm">
+                        <div class="mb-3">
+                            <label for="flexToken" class="form-label">FlexQuery Token</label>
+                            <input type="password" class="form-control" id="flexToken" placeholder="Enter your FlexQuery token" required>
+                            <div class="form-text">
+                                <i class="bi bi-shield-lock me-1"></i>
+                                Your token is used only for this session and not stored
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="queryId" class="form-label">Query ID</label>
+                            <input type="text" class="form-control" id="queryId" placeholder="Enter your Query ID" required>
+                            <div class="form-text">
+                                <i class="bi bi-info-circle me-1"></i>
+                                The ID of your pre-configured FlexQuery
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-outline-secondary me-2" id="testConnectionBtn">
+                                <i class="bi bi-wifi me-2"></i>
+                                Test Connection
+                            </button>
+                            <small id="connectionStatus" class="text-muted"></small>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100" id="fetchBtn">
+                            <i class="bi bi-cloud-download me-2"></i>
+                            Fetch & Analyze Trades
+                        </button>
+                    </form>
+                </div>
 
                 <!-- Progress Bar -->
                 <div class="mt-3">
@@ -93,6 +157,42 @@
             </div>
         </div>
 
+        <!-- IBKR FlexQuery Setup Instructions -->
+        <div class="card mt-5">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-gear me-2"></i>
+                    How to Setup IBKR FlexQuery
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>One-time setup required for automatic data fetching:</strong>
+                </div>
+                <ol class="mb-3">
+                    <li class="mb-2">
+                        <strong>Log into IBKR Account Management</strong>
+                        <div class="text-muted small">Go to <code>Reports → Flex Queries</code></div>
+                    </li>
+                    <li class="mb-2">
+                        <strong>Create Activity Flex Query</strong>
+                        <div class="text-muted small">Include: Trades, Executions, and make sure to select all stock transactions</div>
+                    </li>
+                    <li class="mb-2">
+                        <strong>Note the Query ID</strong>
+                        <div class="text-muted small">Copy the generated Query ID for later use</div>
+                    </li>
+                    <li class="mb-2">
+                        <strong>Enable FlexQuery Web Service</strong>
+                        <div class="text-muted small">Go to <code>Reports → Settings → FlexQuery Web Service</code> and generate a token</div>
+                    </li>
+                </ol>
+                <div class="alert alert-warning">
+                    <small><i class="bi bi-shield-lock me-1"></i>Your credentials are only used for the current session and are never stored on our servers.</small>
+                </div>
+            </div>
+        </div>
+
         <!-- Instructions -->
         <div class="card mt-5">
             <div class="card-header">
@@ -104,16 +204,16 @@
             <div class="card-body">
                 <ol class="mb-0">
                     <li class="mb-2">
-                        <strong>Export your trades from IBKR:</strong>
-                        Log into your Interactive Brokers account and export your trade history as CSV. You can upload multiple CSV files (one per year) for multi-year analysis.
+                        <strong>Choose your data source:</strong>
+                        Upload CSV files manually or fetch trades automatically from IBKR using FlexQuery API.
                     </li>
                     <li class="mb-2">
-                        <strong>Required CSV columns:</strong>
-                        Symbol, TradeDate (or Date), Quantity, Price, Commission, Buy/Sell (or Side)
+                        <strong>For CSV uploads:</strong>
+                        Export your trades from IBKR and upload CSV files. Required columns: Symbol, TradeDate, Quantity, Price, Commission, Buy/Sell.
                     </li>
                     <li class="mb-2">
-                        <strong>Upload and analyze:</strong>
-                        Upload your CSV file using the form above. The system will automatically process your trades and calculate performance metrics.
+                        <strong>For IBKR API:</strong>
+                        Setup FlexQuery (see instructions above), then enter your token and query ID to fetch trades automatically.
                     </li>
                     <li>
                         <strong>View results:</strong>
@@ -129,7 +229,9 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Form elements
     const uploadForm = document.getElementById('uploadForm');
+    const ibkrForm = document.getElementById('ibkrForm');
     const fileInput = document.getElementById('csvFile');
     const dropArea = document.getElementById('dropArea');
     const progressContainer = document.getElementById('progressContainer');
@@ -137,118 +239,234 @@ document.addEventListener('DOMContentLoaded', function() {
     const progressText = document.getElementById('progressText');
     const alertArea = document.getElementById('alertArea');
     const uploadBtn = document.getElementById('uploadBtn');
+    const fetchBtn = document.getElementById('fetchBtn');
+    const testConnectionBtn = document.getElementById('testConnectionBtn');
+    const connectionStatus = document.getElementById('connectionStatus');
 
-    // Drag and drop functionality
-    dropArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropArea.classList.add('border-primary');
-    });
+    // Data source selection elements
+    const csvSection = document.getElementById('csvSection');
+    const ibkrSection = document.getElementById('ibkrSection');
+    const sourceRadios = document.querySelectorAll('input[name="dataSource"]');
 
-    dropArea.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        dropArea.classList.remove('border-primary');
-    });
-
-    dropArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropArea.classList.remove('border-primary');
-
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            fileInput.files = files;
-            fileInput.dispatchEvent(new Event('change'));
-        }
-    });
-
-    // Click to browse
-    dropArea.addEventListener('click', () => {
-        fileInput.click();
-    });
-
-    // File input change
-    fileInput.addEventListener('change', (e) => {
-        const files = Array.from(e.target.files);
-        if (files.length > 0) {
-            let invalidFiles = [];
-            let largeFiles = [];
-
-            files.forEach(file => {
-                if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-                    invalidFiles.push(file.name);
-                }
-                if (file.size > 10 * 1024 * 1024) { // 10MB
-                    largeFiles.push(file.name);
-                }
-            });
-
-            if (invalidFiles.length > 0) {
-                showAlert(`Non-CSV files detected: ${invalidFiles.join(', ')}. Please select only CSV files.`, 'warning');
-                fileInput.value = '';
-                return;
-            }
-
-            if (largeFiles.length > 0) {
-                showAlert(`Files too large (>10MB): ${largeFiles.join(', ')}`, 'warning');
-                fileInput.value = '';
-                return;
-            }
-
-            const fileNames = files.map(f => f.name).join(', ');
-            updateDropAreaText(`Selected ${files.length} file(s): ${fileNames}`);
-        }
-    });
-
-    // Form submission
-    uploadForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const files = fileInput.files;
-        if (!files || files.length === 0) {
-            showAlert('Please select at least one CSV file.', 'warning');
-            return;
-        }
-
-        showProgress();
-
-        const formData = new FormData();
-        // Append all files to the formdata
-        for (let i = 0; i < files.length; i++) {
-            formData.append('files', files[i]);
-        }
-
-        try {
-            const response = await fetch('/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                showAlert(result.message, 'success');
-                setTimeout(() => {
-                    window.location.href = `/results/${result.session_id}`;
-                }, 1500);
-            } else {
-                showAlert(result.detail || 'Upload failed', 'danger');
+    // Data source toggle functionality
+    sourceRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            if (e.target.value === 'csv') {
+                csvSection.style.display = 'block';
+                ibkrSection.style.display = 'none';
+                hideProgress();
+            } else if (e.target.value === 'ibkr') {
+                csvSection.style.display = 'none';
+                ibkrSection.style.display = 'block';
                 hideProgress();
             }
-        } catch (error) {
-            showAlert('Network error. Please try again.', 'danger');
-            hideProgress();
-        }
+        });
     });
 
-    function showProgress() {
+    // CSV Upload functionality (existing logic)
+    if (dropArea && fileInput) {
+        // Drag and drop functionality
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.classList.add('border-primary');
+        });
+
+        dropArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('border-primary');
+        });
+
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('border-primary');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+        });
+
+        // Click to browse
+        dropArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length > 0) {
+                let invalidFiles = [];
+                let largeFiles = [];
+
+                files.forEach(file => {
+                    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                        invalidFiles.push(file.name);
+                    }
+                    if (file.size > 10 * 1024 * 1024) { // 10MB
+                        largeFiles.push(file.name);
+                    }
+                });
+
+                if (invalidFiles.length > 0) {
+                    showAlert(`Non-CSV files detected: ${invalidFiles.join(', ')}. Please select only CSV files.`, 'warning');
+                    fileInput.value = '';
+                    return;
+                }
+
+                if (largeFiles.length > 0) {
+                    showAlert(`Files too large (>10MB): ${largeFiles.join(', ')}`, 'warning');
+                    fileInput.value = '';
+                    return;
+                }
+
+                const fileNames = files.map(f => f.name).join(', ');
+                updateDropAreaText(`Selected ${files.length} file(s): ${fileNames}`);
+            }
+        });
+    }
+
+    // CSV form submission
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const files = fileInput.files;
+            if (!files || files.length === 0) {
+                showAlert('Please select at least one CSV file.', 'warning');
+                return;
+            }
+
+            showProgress('Processing your CSV files...');
+
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert(result.message, 'success');
+                    setTimeout(() => {
+                        window.location.href = `/results/${result.session_id}`;
+                    }, 1500);
+                } else {
+                    showAlert(result.detail || 'Upload failed', 'danger');
+                    hideProgress();
+                }
+            } catch (error) {
+                showAlert('Network error. Please try again.', 'danger');
+                hideProgress();
+            }
+        });
+    }
+
+    // IBKR test connection
+    if (testConnectionBtn) {
+        testConnectionBtn.addEventListener('click', async () => {
+            const token = document.getElementById('flexToken').value;
+            const queryId = document.getElementById('queryId').value;
+
+            if (!token || !queryId) {
+                showAlert('Please enter both FlexQuery token and Query ID.', 'warning');
+                return;
+            }
+
+            testConnectionBtn.disabled = true;
+            connectionStatus.innerHTML = '<i class="spinner-border spinner-border-sm me-1"></i>Testing...';
+
+            try {
+                const response = await fetch('/api/test-ibkr', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        token: token,
+                        query_id: queryId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    connectionStatus.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>' + result.message;
+                } else {
+                    connectionStatus.innerHTML = '<i class="bi bi-x-circle text-danger me-1"></i>' + result.message;
+                }
+            } catch (error) {
+                connectionStatus.innerHTML = '<i class="bi bi-x-circle text-danger me-1"></i>Connection test failed';
+            } finally {
+                testConnectionBtn.disabled = false;
+            }
+        });
+    }
+
+    // IBKR form submission
+    if (ibkrForm) {
+        ibkrForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const token = document.getElementById('flexToken').value;
+            const queryId = document.getElementById('queryId').value;
+
+            if (!token || !queryId) {
+                showAlert('Please enter both FlexQuery token and Query ID.', 'warning');
+                return;
+            }
+
+            showProgress('Fetching trades from IBKR...');
+
+            try {
+                const response = await fetch('/api/fetch-ibkr', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        token: token,
+                        query_id: queryId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert(result.message, 'success');
+                    setTimeout(() => {
+                        window.location.href = `/results/${result.session_id}`;
+                    }, 1500);
+                } else {
+                    showAlert(result.detail || 'Fetch failed', 'danger');
+                    hideProgress();
+                }
+            } catch (error) {
+                showAlert('Network error. Please try again.', 'danger');
+                hideProgress();
+            }
+        });
+    }
+
+    // Utility functions
+    function showProgress(message = 'Processing...') {
         progressContainer.classList.remove('d-none');
-        uploadBtn.disabled = true;
+        if (uploadBtn) uploadBtn.disabled = true;
+        if (fetchBtn) fetchBtn.disabled = true;
         progressBar.style.width = '100%';
-        progressText.textContent = 'Processing your trades...';
+        progressText.textContent = message;
     }
 
     function hideProgress() {
         progressContainer.classList.add('d-none');
-        uploadBtn.disabled = false;
+        if (uploadBtn) uploadBtn.disabled = false;
+        if (fetchBtn) fetchBtn.disabled = false;
         progressBar.style.width = '0%';
     }
 
@@ -262,11 +480,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateDropAreaText(text) {
-        dropArea.innerHTML = `
-            <i class="bi bi-file-earmark-check display-4 mb-3 text-success"></i>
-            <p class="mb-2">${text}</p>
-            <p class="small text-muted">Click to select different files</p>
-        `;
+        if (dropArea) {
+            dropArea.innerHTML = `
+                <i class="bi bi-file-earmark-check display-4 mb-3 text-success"></i>
+                <p class="mb-2">${text}</p>
+                <p class="small text-muted">Click to select different files</p>
+            `;
+        }
     }
 });
 </script>
