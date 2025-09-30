@@ -32,164 +32,181 @@
         </div>
     </div>
 
-    <!-- Enhanced Summary Cards (5 Key Metrics) -->
-    {% if data.performance.summary.total_trades > 0 %}
+    <!-- Main Navigation Tabs -->
     <div class="col-12">
-        <div class="row mb-4">
-            <!-- Top Row - 3 Cards -->
-            <div class="col-md-4">
-                <div class="card text-center h-100 summary-card">
-                    <div class="card-body">
-                        <i class="bi bi-trophy text-primary display-4 mb-3"></i>
-                        <h3 class="card-title text-primary">{{ "%.1f"|format(data.performance.summary.batting_average) }}%</h3>
-                        <p class="card-text text-muted">Batting Average</p>
-                        <small class="text-muted">Win Rate</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card text-center h-100 summary-card">
-                    <div class="card-body">
-                        <i class="bi bi-graph-up-arrow text-success display-4 mb-3"></i>
-                        <h3 class="card-title text-success">+{{ "%.2f"|format(data.performance.summary.average_gain) }}%</h3>
-                        <p class="card-text text-muted">Average Gain</p>
-                        <small class="text-muted">Winners Only</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card text-center h-100 summary-card">
-                    <div class="card-body">
-                        <i class="bi bi-graph-down-arrow text-danger display-4 mb-3"></i>
-                        <h3 class="card-title text-danger">-{{ "%.2f"|format(data.performance.summary.average_loss) }}%</h3>
-                        <p class="card-text text-muted">Average Loss</p>
-                        <small class="text-muted">Losers Only</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mb-4">
-            <!-- Bottom Row - 2 Cards -->
-            <div class="col-md-6">
-                <div class="card text-center h-100 summary-card">
-                    <div class="card-body">
-                        <i class="bi bi-calculator text-info display-4 mb-3"></i>
-                        <h3 class="card-title text-info">{{ "%.2f"|format(data.performance.summary.win_loss_ratio) }}</h3>
-                        <p class="card-text text-muted">Win/Loss Ratio</p>
-                        <small class="text-muted">Avg Gain ÷ Avg Loss</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card text-center h-100 summary-card">
-                    <div class="card-body">
-                        <i class="bi bi-gear text-warning display-4 mb-3"></i>
-                        <h3 class="card-title text-warning">{{ "%.2f"|format(data.performance.summary.adjusted_win_loss_ratio) }}</h3>
-                        <p class="card-text text-muted">Adjusted W/L Ratio</p>
-                        <small class="text-muted">Accounts for Batting Avg</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Additional Info Card -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card bg-light">
-                    <div class="card-body">
-                        <div class="row text-center">
-                            <div class="col-md-3">
-                                <h5 class="text-primary">{{ data.performance.summary.total_trades }}</h5>
-                                <small class="text-muted">Total Trades</small>
-                            </div>
-                            <div class="col-md-3">
-                                <h5 class="{% if data.performance.summary.net_return >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                    {{ "%.2f"|format(data.performance.summary.net_return) }}%
-                                </h5>
-                                <small class="text-muted">Net Return</small>
-                            </div>
-                            <div class="col-md-3">
-                                <h5 class="text-success">{{ data.performance.since_inception.Wins }}</h5>
-                                <small class="text-muted">Winning Trades</small>
-                            </div>
-                            <div class="col-md-3">
-                                <h5 class="text-danger">{{ data.performance.since_inception.Losses }}</h5>
-                                <small class="text-muted">Losing Trades</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% else %}
-    <!-- No Closed Positions Message -->
-    <div class="col-12">
-        <div class="alert alert-success text-center" role="alert">
-            <i class="bi bi-wallet2 me-2"></i>
-            <strong>Portfolio Analysis</strong><br>
-            Your data contains open positions only. View your current holdings, unrealized P&L, and portfolio summary in the <strong>"Open Positions"</strong> tab below.
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Chart Section -->
-    <div class="col-12">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="card-title mb-0">
-                    <i class="bi bi-graph-up me-2"></i>
-                    Performance Over Time
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-lg-6">
-                        <canvas id="performanceChart" width="400" height="200"></canvas>
-                    </div>
-                    <div class="col-lg-6">
-                        <canvas id="winLossChart" width="400" height="200"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Navigation Tabs -->
-    <div class="col-12">
-        <ul class="nav nav-tabs" id="resultsTabs" role="tablist">
+        <ul class="nav nav-tabs nav-tabs-lg" id="mainTabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
-                    <i class="bi bi-house me-1"></i>Overview
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="yearly-tab" data-bs-toggle="tab" data-bs-target="#yearly" type="button" role="tab">
-                    <i class="bi bi-calendar-year me-1"></i>Yearly
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="quarterly-tab" data-bs-toggle="tab" data-bs-target="#quarterly" type="button" role="tab">
-                    <i class="bi bi-calendar3 me-1"></i>Quarterly
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="monthly-tab" data-bs-toggle="tab" data-bs-target="#monthly" type="button" role="tab">
-                    <i class="bi bi-calendar-month me-1"></i>Monthly
+                <button class="nav-link active" id="trades-performance-tab" data-bs-toggle="tab" data-bs-target="#trades-performance" type="button" role="tab">
+                    <i class="bi bi-graph-up me-2"></i>Trades Performance
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="open-positions-tab" data-bs-toggle="tab" data-bs-target="#open-positions" type="button" role="tab">
-                    <i class="bi bi-briefcase me-1"></i>Open Positions
+                    <i class="bi bi-briefcase me-2"></i>Open Positions
                 </button>
             </li>
         </ul>
 
-        <!-- Tab Content -->
-        <div class="tab-content" id="resultsTabContent">
-            <!-- Overview Tab -->
-            <div class="tab-pane fade show active" id="overview" role="tabpanel">
+        <!-- Main Tab Content -->
+        <div class="tab-content" id="mainTabContent">
+            <!-- Trades Performance Tab -->
+            <div class="tab-pane fade show active" id="trades-performance" role="tabpanel">
+                {% if data.performance.summary.total_trades > 0 %}
+                <!-- Enhanced Summary Cards (5 Key Metrics) -->
+                <div class="row mb-4 mt-4">
+                    <!-- Top Row - 3 Cards -->
+                    <div class="col-md-4">
+                        <div class="card text-center h-100 summary-card">
+                            <div class="card-body">
+                                <i class="bi bi-trophy text-primary display-4 mb-3"></i>
+                                <h3 class="card-title text-primary">{{ "%.1f"|format(data.performance.summary.batting_average) }}%</h3>
+                                <p class="card-text text-muted">Batting Average</p>
+                                <small class="text-muted">Win Rate</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-center h-100 summary-card">
+                            <div class="card-body">
+                                <i class="bi bi-graph-up-arrow text-success display-4 mb-3"></i>
+                                <h3 class="card-title text-success">+{{ "%.2f"|format(data.performance.summary.average_gain) }}%</h3>
+                                <p class="card-text text-muted">Average Gain</p>
+                                <small class="text-muted">Winners Only</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-center h-100 summary-card">
+                            <div class="card-body">
+                                <i class="bi bi-graph-down-arrow text-danger display-4 mb-3"></i>
+                                <h3 class="card-title text-danger">-{{ "%.2f"|format(data.performance.summary.average_loss) }}%</h3>
+                                <p class="card-text text-muted">Average Loss</p>
+                                <small class="text-muted">Losers Only</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <!-- Bottom Row - 2 Cards -->
+                    <div class="col-md-6">
+                        <div class="card text-center h-100 summary-card">
+                            <div class="card-body">
+                                <i class="bi bi-calculator text-info display-4 mb-3"></i>
+                                <h3 class="card-title text-info">{{ "%.2f"|format(data.performance.summary.win_loss_ratio) }}</h3>
+                                <p class="card-text text-muted">Win/Loss Ratio</p>
+                                <small class="text-muted">Avg Gain ÷ Avg Loss</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card text-center h-100 summary-card">
+                            <div class="card-body">
+                                <i class="bi bi-gear text-warning display-4 mb-3"></i>
+                                <h3 class="card-title text-warning">{{ "%.2f"|format(data.performance.summary.adjusted_win_loss_ratio) }}</h3>
+                                <p class="card-text text-muted">Adjusted W/L Ratio</p>
+                                <small class="text-muted">Accounts for Batting Avg</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Info Card -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <div class="row text-center">
+                                    <div class="col-md-3">
+                                        <h5 class="text-primary">{{ data.performance.summary.total_trades }}</h5>
+                                        <small class="text-muted">Total Trades</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h5 class="{% if data.performance.summary.net_return >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {{ "%.2f"|format(data.performance.summary.net_return) }}%
+                                        </h5>
+                                        <small class="text-muted">Net Return</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h5 class="text-success">{{ data.performance.since_inception.Wins }}</h5>
+                                        <small class="text-muted">Winning Trades</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h5 class="text-danger">{{ data.performance.since_inception.Losses }}</h5>
+                                        <small class="text-muted">Losing Trades</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart Section -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">
+                                    <i class="bi bi-graph-up me-2"></i>
+                                    Performance Over Time
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-lg-6">
+                                        <canvas id="performanceChart" width="400" height="200"></canvas>
+                                    </div>
+                                    <div class="col-lg-6">
+                                        <canvas id="winLossChart" width="400" height="200"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Sub-tabs -->
+                <div class="row">
+                    <div class="col-12">
+                        <ul class="nav nav-pills nav-fill" id="performanceSubTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
+                                    <i class="bi bi-house me-1"></i>Since Inception
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="yearly-tab" data-bs-toggle="tab" data-bs-target="#yearly" type="button" role="tab">
+                                    <i class="bi bi-calendar-year me-1"></i>Yearly
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="quarterly-tab" data-bs-toggle="tab" data-bs-target="#quarterly" type="button" role="tab">
+                                    <i class="bi bi-calendar3 me-1"></i>Quarterly
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="monthly-tab" data-bs-toggle="tab" data-bs-target="#monthly" type="button" role="tab">
+                                    <i class="bi bi-calendar-month me-1"></i>Monthly
+                                </button>
+                            </li>
+                        </ul>
+
+                        <!-- Performance Sub-tab Content -->
+                        <div class="tab-content mt-3" id="performanceSubTabContent">
+                {% else %}
+                <!-- No Closed Positions Message -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="alert alert-info text-center" role="alert">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>No Completed Trades</strong><br>
+                            Your data contains open positions only. Switch to the <strong>"Open Positions"</strong> tab to view your current holdings and unrealized P&L.
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                            <!-- Since Inception Tab -->
+                            <div class="tab-pane fade show active" id="overview" role="tabpanel">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">Since Inception Performance</h5>
@@ -253,8 +270,8 @@
                 </div>
             </div>
 
-            <!-- Yearly Tab -->
-            <div class="tab-pane fade" id="yearly" role="tabpanel">
+                            <!-- Yearly Tab -->
+                            <div class="tab-pane fade" id="yearly" role="tabpanel">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">Yearly Performance</h5>
@@ -286,7 +303,7 @@
                                             {{ "%.2f"|format(row.Net) }}%
                                         </td>
                                         <td>{{ "%.1f"|format(row['Win %']) }}%</td>
-                                        <td>{{ row['# Trades'] }}</td>
+                                        <td>{{ row['Total Trades'] }}</td>
                                         <td class="text-success">{{ "%.2f"|format(row['Avg Gain']) }}%</td>
                                         <td class="text-danger">{{ "%.2f"|format(row['Avg Loss']) }}%</td>
                                         <td>{{ "%.2f"|format(row.Ratio) }}</td>
@@ -303,8 +320,8 @@
                 </div>
             </div>
 
-            <!-- Quarterly Tab -->
-            <div class="tab-pane fade" id="quarterly" role="tabpanel">
+                            <!-- Quarterly Tab -->
+                            <div class="tab-pane fade" id="quarterly" role="tabpanel">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">Quarterly Performance</h5>
@@ -336,7 +353,7 @@
                                             {{ "%.2f"|format(row.Net) }}%
                                         </td>
                                         <td>{{ "%.1f"|format(row['Win %']) }}%</td>
-                                        <td>{{ row['# Trades'] }}</td>
+                                        <td>{{ row['Total Trades'] }}</td>
                                         <td class="text-success">{{ "%.2f"|format(row['Avg Gain']) }}%</td>
                                         <td class="text-danger">{{ "%.2f"|format(row['Avg Loss']) }}%</td>
                                         <td>{{ "%.2f"|format(row.Ratio) }}</td>
@@ -353,8 +370,8 @@
                 </div>
             </div>
 
-            <!-- Monthly Tab -->
-            <div class="tab-pane fade" id="monthly" role="tabpanel">
+                            <!-- Monthly Tab -->
+                            <div class="tab-pane fade" id="monthly" role="tabpanel">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">Monthly Performance</h5>
@@ -386,7 +403,7 @@
                                             {{ "%.2f"|format(row.Net) }}%
                                         </td>
                                         <td>{{ "%.1f"|format(row['Win %']) }}%</td>
-                                        <td>{{ row['# Trades'] }}</td>
+                                        <td>{{ row['Total Trades'] }}</td>
                                         <td class="text-success">{{ "%.2f"|format(row['Avg Gain']) }}%</td>
                                         <td class="text-danger">{{ "%.2f"|format(row['Avg Loss']) }}%</td>
                                         <td>{{ "%.2f"|format(row.Ratio) }}</td>
@@ -399,6 +416,10 @@
                         {% else %}
                         <p class="text-muted">No monthly data available</p>
                         {% endif %}
+                    </div>
+                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -551,11 +572,23 @@ const SESSION_ID = '{{ session_id }}';
 // Open Positions functionality
 let autoRefreshInterval = null;
 
-// Initialize open positions when tab is shown
+// Initialize tabs and functionality
 document.addEventListener('DOMContentLoaded', function() {
+    const tradesPerformanceTab = document.getElementById('trades-performance-tab');
     const openPositionsTab = document.getElementById('open-positions-tab');
     const refreshBtn = document.getElementById('refreshPricesBtn');
     
+    // Initialize charts when trades performance tab is shown
+    if (tradesPerformanceTab) {
+        tradesPerformanceTab.addEventListener('shown.bs.tab', function() {
+            // Small delay to ensure tab content is visible before initializing charts
+            setTimeout(() => {
+                initializeCharts();
+            }, 100);
+        });
+    }
+    
+    // Initialize open positions when tab is shown
     if (openPositionsTab) {
         openPositionsTab.addEventListener('shown.bs.tab', function() {
             loadOpenPositions();
@@ -572,6 +605,11 @@ document.addEventListener('DOMContentLoaded', function() {
             refreshPrices();
         });
     }
+    
+    // Initialize charts on page load (trades performance tab is active by default)
+    setTimeout(() => {
+        initializeCharts();
+    }, 100);
 });
 
 async function loadOpenPositions() {
@@ -765,16 +803,28 @@ function formatPercentage(value) {
 const sessionId = '{{ session_id }}';
 const performanceData = {{ data.performance | tojson }};
 
-// Initialize charts when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    initializeCharts();
-});
+// Chart initialization moved to main event listener above
+
+// Global chart instances
+let performanceChart = null;
+let winLossChart = null;
 
 function initializeCharts() {
+    // Destroy existing charts if they exist
+    if (performanceChart) {
+        performanceChart.destroy();
+        performanceChart = null;
+    }
+    if (winLossChart) {
+        winLossChart.destroy();
+        winLossChart = null;
+    }
+    
     // Performance Over Time Chart
     if (performanceData.monthly && performanceData.monthly.length > 0) {
-        const ctx1 = document.getElementById('performanceChart').getContext('2d');
-        new Chart(ctx1, {
+        const ctx1 = document.getElementById('performanceChart');
+        if (ctx1) {
+            performanceChart = new Chart(ctx1.getContext('2d'), {
             type: 'line',
             data: {
                 labels: performanceData.monthly.map(d => d.Date),
@@ -805,13 +855,15 @@ function initializeCharts() {
                     }
                 }
             }
-        });
+            });
+        }
     }
 
     // Win/Loss Distribution Chart
     if (performanceData.since_inception) {
-        const ctx2 = document.getElementById('winLossChart').getContext('2d');
-        new Chart(ctx2, {
+        const ctx2 = document.getElementById('winLossChart');
+        if (ctx2) {
+            winLossChart = new Chart(ctx2.getContext('2d'), {
             type: 'doughnut',
             data: {
                 labels: ['Wins', 'Losses', 'Break-even'],
@@ -837,7 +889,8 @@ function initializeCharts() {
                     }
                 }
             }
-        });
+            });
+        }
     }
 }
 
