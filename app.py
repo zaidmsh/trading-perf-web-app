@@ -19,7 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, UploadFile, File, Request, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Request, HTTPException, BackgroundTasks, Form
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
@@ -393,51 +393,114 @@ async def hybrid_upload(token: str, query_id: str, files: list[UploadFile] = Fil
 
 
 
-@app.post("/api/process-data")
-async def process_data(request: ProcessRequest, files: list[UploadFile] = File(None)):
-    """Unified endpoint for processing data from different sources"""
+@app.post("/api/hybrid-analyze")
+async def hybrid_analyze(
+    files: list[UploadFile] = File(None),
+    token: str = Form(None),
+    query_id: str = Form(None),
+    start_year: int = Form(None)
+):
+    """Unified endpoint that automatically detects and processes available inputs"""
     try:
-        if request.source == "csv":
-            if not files:
-                raise HTTPException(status_code=400, detail="No files provided for CSV source")
+        # Check what inputs are provided
+        has_files = files and len(files) > 0 and files[0].filename
+        has_ibkr_credentials = token and token.strip() and query_id and query_id.strip()
 
+        # Validation: At least one input method required
+        if not has_files and not has_ibkr_credentials:
+            raise HTTPException(
+                status_code=400, 
+                detail="Please provide either CSV files or IBKR credentials (or both)."
+            )
+
+        # Determine processing mode and execute
+        if has_files and has_ibkr_credentials:
+            # Hybrid mode: Combine CSV files with IBKR data
+            result = await data_manager.get_trades(
+                source="hybrid",
+                files=files,
+                token=token,
+                query_id=query_id
+            )
+            source_info = f"Hybrid: {len(files)} CSV file(s) + IBKR current year"
+            files_count = len(files) + 1
+
+        elif has_files:
+            # CSV only mode
             result = await data_manager.get_trades(source="csv", files=files)
             source_info = f"{len(files)} CSV file(s)"
-
-        elif request.source == "ibkr":
-            if not request.token or not request.query_id:
-                raise HTTPException(status_code=400, detail="Token and Query ID required for IBKR source")
-
-            result = await data_manager.get_trades(
-                source="ibkr",
-                token=request.token,
-                query_id=request.query_id
-            )
-            source_info = f"IBKR FlexQuery {request.query_id}"
+            files_count = len(files)
 
         else:
-            raise HTTPException(status_code=400, detail="Invalid source type")
+            # IBKR only mode
+            if start_year:
+                result = await data_manager.get_trades(
+                    source="ibkr",
+                    token=token,
+                    query_id=query_id,
+                    historical=True,
+                    start_year=start_year
+                )
+                source_info = f"IBKR Historical ({start_year}-present)"
+            else:
+                result = await data_manager.get_trades(
+                    source="ibkr",
+                    token=token,
+                    query_id=query_id
+                )
+                source_info = f"IBKR FlexQuery {query_id}"
+            files_count = 1
 
         # Generate unique session ID
         session_id = str(uuid.uuid4())
 
+        # Convert timestamps to strings for JSON serialization
+        roundtrips_serializable = result["roundtrips"].copy()
+        for col in roundtrips_serializable.columns:
+            if roundtrips_serializable[col].dtype.name.startswith('datetime'):
+                roundtrips_serializable[col] = roundtrips_serializable[col].dt.strftime('%Y-%m-%d')
+
         # Store results
         results_store[session_id] = {
             "filename": source_info,
-            "files_count": 1,
+            "files_count": files_count,
             "upload_time": datetime.now().isoformat(),
-            "roundtrips": result["roundtrips"].to_dict('records'),
+            "roundtrips": roundtrips_serializable.to_dict('records'),
             "performance": result["performance"]
         }
 
         return JSONResponse({
             "success": True,
             "session_id": session_id,
-            "message": f"Processed {len(result['roundtrips'])} roundtrips from {source_info}"
+            "message": f"Processed {len(result['roundtrips'])} roundtrips from {source_info.lower()}"
         })
 
+    except HTTPException as he:
+        # Re-raise HTTPExceptions as-is (they already have proper status codes and detail)
+        logger.error(f"Hybrid analyze HTTPException: {he.detail} (status: {he.status_code})")
+        raise he
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        error_message = str(e)
+        logger.error(f"Hybrid analyze error: '{error_message}' (type: {type(e).__name__})")
+        
+        # Handle empty error messages
+        if not error_message or error_message.strip() == "":
+            error_message = f"Unknown error occurred during analysis ({type(e).__name__})"
+        
+        # Provide more specific error messages based on error content
+        if "Authentication failed" in error_message or "Invalid request or unable to validate request" in error_message:
+            error_message = "IBKR authentication failed. Please check your FlexQuery token and Query ID."
+        elif "No trades found" in error_message:
+            error_message = "No trades found in IBKR FlexQuery response. Please check your query configuration."
+        elif "Network error" in error_message:
+            error_message = "Network error connecting to IBKR. Please try again later."
+        elif "Failed to fetch IBKR data" in error_message:
+            # Extract the underlying error message
+            if ":" in error_message:
+                underlying_error = error_message.split(":", 1)[1].strip()
+                error_message = f"IBKR fetch failed: {underlying_error}"
+        
+        raise HTTPException(status_code=400, detail=error_message)
 
 
 # Background task to clean up old results (run periodically in production)
