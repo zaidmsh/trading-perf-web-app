@@ -39,10 +39,24 @@ def parse_date_only(s: str) -> pd.Timestamp:
     if not s:
         return pd.NaT
 
-    # Keep only digits for safety
+    # First try direct pandas datetime parsing for standard formats
+    try:
+        parsed = pd.to_datetime(s, errors="coerce")
+        if not pd.isna(parsed):
+            return parsed.normalize()  # Strip time component
+    except Exception:
+        pass
+
+    # Keep only digits for safety (for YYYYMMDD format)
     digits = "".join(ch for ch in s if ch.isdigit())
-    if len(digits) >= 8:
-        digits = digits[-8:]  # use the last 8 digits
+    if len(digits) == 8:  # Exact 8 digits for YYYYMMDD
+        try:
+            return pd.to_datetime(digits, format="%Y%m%d", errors="coerce")
+        except Exception:
+            pass
+    elif len(digits) >= 8:
+        # For longer digit strings, try the first 8 (not last 8)
+        digits = digits[:8]
         try:
             return pd.to_datetime(digits, format="%Y%m%d", errors="coerce")
         except Exception:

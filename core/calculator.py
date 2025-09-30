@@ -82,8 +82,8 @@ def agg_block(df_group):
 
     # Largest winner/loser (%)
     lg_gain = safe_max(df_group["_pct"]) * 100.0 if wins > 0 else 0.0
-    lg_loss = safe_min(df_group["_pct"]) * 100.0 if losses > 0 else 0.0
-    lg_net = lg_gain + lg_loss
+    lg_loss = abs(safe_min(df_group["_pct"])) * 100.0 if losses > 0 else 0.0  # Make loss positive
+    lg_net = lg_gain - lg_loss  # Net should be gain minus loss
     lg_ratio = 0.0
     if losses > 0 and lg_loss != 0:
         lg_ratio = abs(lg_gain / lg_loss)
@@ -110,7 +110,7 @@ def agg_block(df_group):
         "Wins": int(wins),
         "Losses": int(losses),
         "Break-even": int(be),
-        "# Trades": int(n_trades),
+        "Total Trades": int(n_trades),
         "LG Gain": round(lg_gain, 2),
         "LG Loss": round(lg_loss, 2),
         "LG Net": round(lg_net, 2),
@@ -236,7 +236,7 @@ def calculate_performance(roundtrips_df: pd.DataFrame) -> Dict[str, Any]:
     adjusted_win_loss_ratio = win_loss_ratio * (batting_average / 100) if batting_average > 0 else 0
 
     summary = {
-        "total_trades": since_inception.get("# Trades", 0),
+        "total_trades": since_inception.get("Total Trades", 0),
         "batting_average": batting_average,  # Win rate percentage
         "average_gain": avg_gain,  # Average gain on winning trades only
         "average_loss": avg_loss,  # Average loss on losing trades only (positive)

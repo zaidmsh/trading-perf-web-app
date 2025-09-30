@@ -19,16 +19,20 @@ class FlexQueryClient:
 
     BASE_URL = "https://gdcdyn.interactivebrokers.com/Universal/servlet"
 
-    def __init__(self, token: str, query_id: str):
+    def __init__(self, token: str, query_id: str, from_date: Optional[str] = None, to_date: Optional[str] = None):
         """
         Initialize FlexQuery client
 
         Args:
             token: FlexQuery service token
             query_id: FlexQuery report ID
+            from_date: Optional start date in YYYYMMDD format (max 365 days range)
+            to_date: Optional end date in YYYYMMDD format
         """
         self.token = token
         self.query_id = query_id
+        self.from_date = from_date
+        self.to_date = to_date
 
     def fetch_statement(self) -> Types.FlexQueryResponse:
         """
@@ -60,6 +64,14 @@ class FlexQueryClient:
                 "q": self.query_id,
                 "v": "3"
             }
+
+            # Add date range parameters if specified
+            if self.from_date:
+                request_params["fd"] = self.from_date
+                logger.info(f"Using custom from date: {self.from_date}")
+            if self.to_date:
+                request_params["td"] = self.to_date
+                logger.info(f"Using custom to date: {self.to_date}")
 
             logger.info(f"Requesting FlexQuery report from IBKR...")
             request_response = requests.get(request_url, params=request_params)
@@ -415,6 +427,65 @@ class FlexQueryClient:
         except Exception as e:
             logger.error(f"Error in fetch_and_process_trades: {e}")
             raise
+
+    @classmethod
+    def fetch_historical_data(cls, token: str, query_id: str, start_year: int, end_year: Optional[int] = None) -> pd.DataFrame:
+        """
+        Fetch historical data across multiple years by making separate requests per year
+
+        Args:
+            token: FlexQuery service token
+            query_id: FlexQuery report ID
+            start_year: Starting year (e.g., 2020)
+            end_year: Ending year (optional, defaults to current year)
+
+        Returns:
+            Combined DataFrame with all historical trades (RAW TRADES, not processed)
+        """
+        if end_year is None:
+            end_year = datetime.now().year
+
+        logger.info(f"Fetching historical data from {start_year} to {end_year}")
+
+        all_trades = []
+
+        for year in range(start_year, end_year + 1):
+            try:
+                # Set date range for the entire year
+                from_date = f"{year}0101"  # January 1st
+                to_date = f"{year}1231"    # December 31st
+
+                logger.info(f"Fetching data for year {year} ({from_date} to {to_date})")
+
+                # Create client for this year
+                client = cls(token, query_id, from_date, to_date)
+
+                # Fetch RAW response and parse trades (not processed)
+                response = client.fetch_trades_raw()
+                trades = client.parse_trades_from_response(response)
+
+                if trades:
+                    logger.info(f"Retrieved {len(trades)} trades for year {year}")
+                    all_trades.extend(trades)
+                else:
+                    logger.info(f"No trades found for year {year}")
+
+                # Add a small delay between requests to be respectful to IBKR servers
+                import time
+                time.sleep(2)
+
+            except Exception as e:
+                logger.error(f"Error fetching data for year {year}: {e}")
+                continue
+
+        if all_trades:
+            # Convert all trades to single DataFrame
+            combined_df = client.convert_to_dataframe(all_trades)
+            logger.info(f"Combined historical data: {len(combined_df)} total trades from {len(all_trades)} raw trades")
+            return combined_df
+        else:
+            logger.warning("No historical data retrieved")
+            return pd.DataFrame()
 
 
 def test_connection(token: str, query_id: str) -> Tuple[bool, str]:

@@ -8,7 +8,7 @@ import uuid
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import pandas as pd
 from io import BytesIO
 
@@ -50,12 +50,20 @@ data_manager = DataManager()
 class IBKRRequest(BaseModel):
     token: str
     query_id: str
+    start_year: Optional[int] = None
+
+
 
 
 class ProcessRequest(BaseModel):
-    source: str  # 'csv' or 'ibkr'
+    source: str  # 'csv', 'ibkr', or 'hybrid'
     token: str = None
     query_id: str = None
+
+
+class HybridRequest(BaseModel):
+    token: str
+    query_id: str
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -278,11 +286,23 @@ async def fetch_ibkr_data(request: IBKRRequest):
     """Fetch trades from IBKR FlexQuery API"""
     try:
         # Use data manager to fetch and process trades
-        result = await data_manager.get_trades(
-            source="ibkr",
-            token=request.token,
-            query_id=request.query_id
-        )
+        # If start_year is provided, fetch historical data
+        if request.start_year:
+            result = await data_manager.get_trades(
+                source="ibkr",
+                token=request.token,
+                query_id=request.query_id,
+                historical=True,
+                start_year=request.start_year
+            )
+            data_source = f"IBKR Historical ({request.start_year}-present)"
+        else:
+            result = await data_manager.get_trades(
+                source="ibkr",
+                token=request.token,
+                query_id=request.query_id
+            )
+            data_source = f"IBKR FlexQuery {request.query_id}"
 
         # Generate unique session ID
         session_id = str(uuid.uuid4())
@@ -295,7 +315,7 @@ async def fetch_ibkr_data(request: IBKRRequest):
 
         # Store results in the same format as CSV upload
         results_store[session_id] = {
-            "filename": f"IBKR FlexQuery {request.query_id}",
+            "filename": data_source,
             "files_count": 1,
             "upload_time": datetime.now().isoformat(),
             "roundtrips": roundtrips_serializable.to_dict('records'),
@@ -323,6 +343,54 @@ async def test_ibkr_connection(request: IBKRRequest):
             "success": False,
             "message": f"Connection test failed: {str(e)}"
         })
+
+
+@app.post("/api/hybrid-upload")
+async def hybrid_upload(token: str, query_id: str, files: list[UploadFile] = File(...)):
+    """Combine CSV files (historical) with IBKR current year data"""
+    try:
+        # Validate inputs
+        if not files:
+            raise HTTPException(status_code=400, detail="Please upload at least one CSV file for historical data")
+
+        if not token or not query_id:
+            raise HTTPException(status_code=400, detail="IBKR token and Query ID are required")
+
+        # Use data manager to process hybrid data
+        result = await data_manager.get_trades(
+            source="hybrid",
+            files=files,
+            token=token,
+            query_id=query_id
+        )
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())
+
+        # Convert timestamps to strings for JSON serialization
+        roundtrips_serializable = result["roundtrips"].copy()
+        for col in roundtrips_serializable.columns:
+            if roundtrips_serializable[col].dtype.name.startswith('datetime'):
+                roundtrips_serializable[col] = roundtrips_serializable[col].dt.strftime('%Y-%m-%d')
+
+        # Store results
+        results_store[session_id] = {
+            "filename": f"Hybrid: {len(files)} CSV file(s) + IBKR current year",
+            "files_count": len(files) + 1,  # CSV files + IBKR
+            "upload_time": datetime.now().isoformat(),
+            "roundtrips": roundtrips_serializable.to_dict('records'),
+            "performance": result["performance"]
+        }
+
+        return JSONResponse({
+            "success": True,
+            "session_id": session_id,
+            "message": f"Combined {len(files)} CSV file(s) with IBKR data: {len(result['roundtrips'])} total roundtrips"
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 
 @app.post("/api/process-data")

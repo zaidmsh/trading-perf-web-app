@@ -23,24 +23,34 @@
                 <!-- Data Source Selection -->
                 <div class="mb-4">
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="dataSource" id="sourceCSV" value="csv" checked>
                                 <label class="form-check-label" for="sourceCSV">
                                     <i class="bi bi-file-earmark-text me-2"></i>
-                                    <strong>Upload CSV Files</strong>
+                                    <strong>CSV Only</strong>
                                 </label>
-                                <div class="form-text">Upload IBKR trade CSV files manually</div>
+                                <div class="form-text">Upload CSV files manually</div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="dataSource" id="sourceIBKR" value="ibkr">
                                 <label class="form-check-label" for="sourceIBKR">
                                     <i class="bi bi-cloud-download me-2"></i>
-                                    <strong>Fetch from IBKR</strong>
+                                    <strong>IBKR Only</strong>
                                 </label>
-                                <div class="form-text">Use FlexQuery API to fetch trades automatically</div>
+                                <div class="form-text">Fetch current year from IBKR</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="dataSource" id="sourceHybrid" value="hybrid">
+                                <label class="form-check-label" for="sourceHybrid">
+                                    <i class="bi bi-layers me-2"></i>
+                                    <strong>CSV + IBKR</strong>
+                                </label>
+                                <div class="form-text">Combine historical CSV with current IBKR</div>
                             </div>
                         </div>
                     </div>
@@ -94,6 +104,15 @@
                         </div>
 
                         <div class="mb-3">
+                            <label for="startYear" class="form-label">Start Year (Optional)</label>
+                            <input type="number" class="form-control" id="startYear" placeholder="e.g., 2020" min="2000" max="2025">
+                            <div class="form-text">
+                                <i class="bi bi-calendar-range me-1"></i>
+                                Leave empty for current year only, or specify year to fetch historical data (e.g., 2020)
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
                             <button type="button" class="btn btn-outline-secondary me-2" id="testConnectionBtn">
                                 <i class="bi bi-wifi me-2"></i>
                                 Test Connection
@@ -104,6 +123,54 @@
                         <button type="submit" class="btn btn-primary w-100" id="fetchBtn">
                             <i class="bi bi-cloud-download me-2"></i>
                             Fetch & Analyze Trades
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Hybrid Upload Section -->
+                <div id="hybridSection" style="display: none;">
+                    <div class="alert alert-info">
+                        <i class="bi bi-lightbulb me-2"></i>
+                        <strong>Hybrid Mode:</strong> Upload CSV files for historical data, then we'll automatically fetch current year from IBKR and combine everything with duplicate removal.
+                    </div>
+
+                    <form id="hybridForm" enctype="multipart/form-data">
+                        <!-- CSV Files for Historical Data -->
+                        <div class="mb-3">
+                            <label for="hybridCsvFile" class="form-label">Historical CSV Files</label>
+                            <input class="form-control" type="file" id="hybridCsvFile" name="files" accept=".csv" multiple required>
+                            <div class="form-text">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Upload CSV files for previous years (2020, 2021, 2022, etc.)
+                            </div>
+                        </div>
+
+                        <!-- Drag and Drop Area -->
+                        <div id="hybridDropArea" class="border-2 border-dashed border-secondary rounded p-4 text-center text-muted mb-3">
+                            <i class="bi bi-cloud-upload display-4 mb-3"></i>
+                            <p class="mb-2">Drag and drop your historical CSV files here</p>
+                            <p class="small">We'll combine these with current IBKR data automatically</p>
+                        </div>
+
+                        <!-- IBKR Credentials -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="hybridFlexToken" class="form-label">FlexQuery Token</label>
+                                    <input type="password" class="form-control" id="hybridFlexToken" placeholder="Enter your FlexQuery token" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="hybridQueryId" class="form-label">Query ID</label>
+                                    <input type="text" class="form-control" id="hybridQueryId" placeholder="Enter your Query ID" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100" id="hybridBtn">
+                            <i class="bi bi-layers me-2"></i>
+                            Combine Historical CSV + Current IBKR Data
                         </button>
                     </form>
                 </div>
@@ -246,19 +313,25 @@ document.addEventListener('DOMContentLoaded', function() {
     // Data source selection elements
     const csvSection = document.getElementById('csvSection');
     const ibkrSection = document.getElementById('ibkrSection');
+    const hybridSection = document.getElementById('hybridSection');
     const sourceRadios = document.querySelectorAll('input[name="dataSource"]');
 
     // Data source toggle functionality
     sourceRadios.forEach(radio => {
         radio.addEventListener('change', (e) => {
+            // Hide all sections first
+            csvSection.style.display = 'none';
+            ibkrSection.style.display = 'none';
+            hybridSection.style.display = 'none';
+            hideProgress();
+
+            // Show the selected section
             if (e.target.value === 'csv') {
                 csvSection.style.display = 'block';
-                ibkrSection.style.display = 'none';
-                hideProgress();
             } else if (e.target.value === 'ibkr') {
-                csvSection.style.display = 'none';
                 ibkrSection.style.display = 'block';
-                hideProgress();
+            } else if (e.target.value === 'hybrid') {
+                hybridSection.style.display = 'block';
             }
         });
     });
@@ -416,13 +489,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const token = document.getElementById('flexToken').value;
             const queryId = document.getElementById('queryId').value;
+            const startYear = document.getElementById('startYear').value;
 
             if (!token || !queryId) {
                 showAlert('Please enter both FlexQuery token and Query ID.', 'warning');
                 return;
             }
 
-            showProgress('Fetching trades from IBKR...');
+            // Update progress message based on whether historical data is requested
+            const progressMessage = startYear ?
+                `Fetching historical trades from IBKR (${startYear}-present)...` :
+                'Fetching trades from IBKR...';
+            showProgress(progressMessage);
+
+            const requestBody = {
+                token: token,
+                query_id: queryId
+            };
+
+            // Add start_year if provided
+            if (startYear) {
+                requestBody.start_year = parseInt(startYear);
+            }
 
             try {
                 const response = await fetch('/api/fetch-ibkr', {
@@ -430,10 +518,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        token: token,
-                        query_id: queryId
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const result = await response.json();
@@ -445,6 +530,98 @@ document.addEventListener('DOMContentLoaded', function() {
                     }, 1500);
                 } else {
                     showAlert(result.detail || 'Fetch failed', 'danger');
+                    hideProgress();
+                }
+            } catch (error) {
+                showAlert('Network error. Please try again.', 'danger');
+                hideProgress();
+            }
+        });
+    }
+
+    // Hybrid form elements
+    const hybridForm = document.getElementById('hybridForm');
+    const hybridFileInput = document.getElementById('hybridCsvFile');
+    const hybridDropArea = document.getElementById('hybridDropArea');
+    const hybridBtn = document.getElementById('hybridBtn');
+
+    // Hybrid drag and drop functionality
+    if (hybridDropArea && hybridFileInput) {
+        hybridDropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            hybridDropArea.classList.add('border-primary');
+        });
+
+        hybridDropArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            hybridDropArea.classList.remove('border-primary');
+        });
+
+        hybridDropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            hybridDropArea.classList.remove('border-primary');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                hybridFileInput.files = files;
+                hybridFileInput.dispatchEvent(new Event('change'));
+            }
+        });
+
+        hybridDropArea.addEventListener('click', () => {
+            hybridFileInput.click();
+        });
+
+        hybridFileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length > 0) {
+                const fileNames = files.map(f => f.name).join(', ');
+                updateHybridDropAreaText(`Selected ${files.length} historical file(s): ${fileNames}`);
+            }
+        });
+    }
+
+    // Hybrid form submission
+    if (hybridForm) {
+        hybridForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const files = hybridFileInput.files;
+            const token = document.getElementById('hybridFlexToken').value;
+            const queryId = document.getElementById('hybridQueryId').value;
+
+            if (!files || files.length === 0) {
+                showAlert('Please select at least one CSV file for historical data.', 'warning');
+                return;
+            }
+
+            if (!token || !queryId) {
+                showAlert('Please enter both FlexQuery token and Query ID.', 'warning');
+                return;
+            }
+
+            showProgress(`Combining ${files.length} historical CSV file(s) with current IBKR data...`);
+
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+
+            try {
+                const response = await fetch(`/api/hybrid-upload?token=${encodeURIComponent(token)}&query_id=${encodeURIComponent(queryId)}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert(result.message, 'success');
+                    setTimeout(() => {
+                        window.location.href = `/results/${result.session_id}`;
+                    }, 1500);
+                } else {
+                    showAlert(result.detail || 'Hybrid upload failed', 'danger');
                     hideProgress();
                 }
             } catch (error) {
@@ -482,6 +659,16 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateDropAreaText(text) {
         if (dropArea) {
             dropArea.innerHTML = `
+                <i class="bi bi-file-earmark-check display-4 mb-3 text-success"></i>
+                <p class="mb-2">${text}</p>
+                <p class="small text-muted">Click to select different files</p>
+            `;
+        }
+    }
+
+    function updateHybridDropAreaText(text) {
+        if (hybridDropArea) {
+            hybridDropArea.innerHTML = `
                 <i class="bi bi-file-earmark-check display-4 mb-3 text-success"></i>
                 <p class="mb-2">${text}</p>
                 <p class="small text-muted">Click to select different files</p>
