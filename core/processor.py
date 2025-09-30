@@ -20,6 +20,7 @@ COLUMN_MAP = {
     "commission": ["Commission", "Comm/Fee", "IBCommission"],
     "portfolio": ["Account Alias", "Account Name", "Account Id", "Account ID"],
     "code": ["Order Reference", "Order Ref", "Client Order Id", "Client Order ID"],
+    "open_close": ["Open/CloseIndicator", "OpenClosIndicator", "Open/Close", "OpenClose", "Open/Close Indicator"],
 }
 
 
@@ -115,7 +116,7 @@ def as_int_abs(x: Any) -> int:
             return 0
 
 
-def build_round_trips(df: pd.DataFrame, col: Dict[str, str]) -> pd.DataFrame:
+def build_round_trips(df: pd.DataFrame, col: Dict[str, str]) -> Tuple[pd.DataFrame, Dict, Dict]:
     """Build round trips from trades using FIFO matching"""
     # Sort executions by date only
     trades = df.sort_values(by="_parsed_dt", kind="mergesort").copy()
@@ -123,6 +124,8 @@ def build_round_trips(df: pd.DataFrame, col: Dict[str, str]) -> pd.DataFrame:
     commission_col = col["commission"] if col["commission"] else None
     portfolio_col = col["portfolio"] if col["portfolio"] else None
     code_col = col["code"] if col["code"] else None
+    open_close_col = col["open_close"] if col["open_close"] else None
+    
 
     open_long = {}   # key -> list of BUY-open lots
     open_short = {}  # key -> list of SELL-open lots
@@ -140,6 +143,7 @@ def build_round_trips(df: pd.DataFrame, col: Dict[str, str]) -> pd.DataFrame:
         price = as_float(r[col["price"]])
         d = r["_parsed_dt"]  # date only
         side = str(r[col["side"]]).strip().upper()
+        open_close = str(r[open_close_col]).strip().upper() if (open_close_col and pd.notna(r[open_close_col])) else ""
         comm_total = as_float(r[commission_col]) if (commission_col and pd.notna(r[commission_col])) else 0.0
         portfolio = str(r[portfolio_col]).strip() if portfolio_col else ""
         code = str(r[code_col]).strip() if code_col else ""
@@ -155,8 +159,11 @@ def build_round_trips(df: pd.DataFrame, col: Dict[str, str]) -> pd.DataFrame:
             "code": code,
         }
 
-        if side in ("BUY", "B"):
-            # Close shorts first, remainder opens long
+        # Determine trade action based on side and open/close indicator
+        if open_close and side in ("BUY", "B") and open_close == "O":  # BUY + O = Open Long
+            push(open_long, key, lot)
+            
+        elif open_close and side in ("BUY", "B") and open_close == "C":  # BUY + C = Close Short
             closing_qty = qty
             shorts = open_short.get(key, [])
             i = 0
@@ -190,15 +197,11 @@ def build_round_trips(df: pd.DataFrame, col: Dict[str, str]) -> pd.DataFrame:
 
             if i > 0:
                 open_short[key] = shorts[i:]
-            if closing_qty > 0:
-                push(open_long, key, {
-                    **lot,
-                    "qty_left": closing_qty,
-                    "commission_total": (comm_total * (closing_qty / qty)) if qty > 0 else 0.0
-                })
-
-        elif side in ("SELL", "S"):
-            # Close longs first, remainder opens short
+                
+        elif side in ("SELL", "S") and open_close == "O":  # SELL + O = Open Short
+            push(open_short, key, lot)
+            
+        elif side in ("SELL", "S") and open_close == "C":  # SELL + C = Close Long
             closing_qty = qty
             longs = open_long.get(key, [])
             i = 0
@@ -232,15 +235,9 @@ def build_round_trips(df: pd.DataFrame, col: Dict[str, str]) -> pd.DataFrame:
 
             if i > 0:
                 open_long[key] = longs[i:]
-            if closing_qty > 0:
-                push(open_short, key, {
-                    **lot,
-                    "qty_left": closing_qty,
-                    "commission_total": (comm_total * (closing_qty / qty)) if qty > 0 else 0.0
-                })
 
     if not rows:
-        return pd.DataFrame(columns=["Symbol", "Shares", "Entry Price", "Entry Date", "Exit Price", "Exit Date", "Type", "Commission", "Portfolio", "Code"])
+        return pd.DataFrame(columns=["Symbol", "Shares", "Entry Price", "Entry Date", "Exit Price", "Exit Date", "Type", "Commission", "Portfolio", "Code"]), open_long, open_short
 
     out = pd.DataFrame(rows)
     out["Shares"] = out["Shares"].astype(int)
@@ -253,17 +250,17 @@ def build_round_trips(df: pd.DataFrame, col: Dict[str, str]) -> pd.DataFrame:
     # Sort round trips by Entry Date
     out = out.sort_values(by="Entry Date", kind="mergesort")
 
-    return out
+    return out, open_long, open_short
 
 
-def process_ibkr_csv(csv_content: str) -> pd.DataFrame:
-    """Main function to process IBKR CSV content and return roundtrips"""
+def process_ibkr_csv(csv_content: str) -> Tuple[pd.DataFrame, Dict, Dict]:
+    """Main function to process IBKR CSV content and return roundtrips and open positions"""
     # Read CSV content into DataFrame
     from io import StringIO
     df = pd.read_csv(StringIO(csv_content))
 
-    # Process to roundtrips
+    # Process to roundtrips and extract open positions
     df, col = normalize_columns(df)
-    roundtrips_df = build_round_trips(df, col)
+    roundtrips_df, open_long, open_short = build_round_trips(df, col)
 
-    return roundtrips_df
+    return roundtrips_df, open_long, open_short

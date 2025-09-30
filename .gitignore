@@ -1,1 +1,7 @@
 /var/*.csv
+
+# Python cache files
+*.pyc
+__pycache__/
+*.pyo
+*.pyd

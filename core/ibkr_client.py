@@ -205,7 +205,8 @@ class FlexQueryClient:
                     "currency": str(row.get("Currency", "USD")),
                     "description": str(row.get("Description", "")),
                     "account": str(row.get("Account", "")),
-                    "order_ref": str(row.get("OrderReference", ""))
+                    "order_ref": str(row.get("OrderReference", "")),
+                    "open_close": str(row.get("Open/CloseIndicator", ""))
                 }
 
                 # Skip if essential fields are missing
@@ -384,7 +385,8 @@ class FlexQueryClient:
             "commission": "Commission",
             "currency": "Currency",
             "account": "Account",
-            "order_ref": "Order Reference"
+            "order_ref": "Order Reference",
+            "open_close": "Open/CloseIndicator"
         }
 
         df = df.rename(columns=column_mapping)

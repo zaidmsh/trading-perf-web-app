@@ -97,7 +97,7 @@ async def upload_file(files: list[UploadFile] = File(...)):
             csv_content = content.decode('utf-8')
 
             # Process the CSV
-            roundtrips_df = process_ibkr_csv(csv_content)
+            roundtrips_df, _, _ = process_ibkr_csv(csv_content)
 
             if not roundtrips_df.empty:
                 all_roundtrips.append(roundtrips_df)
@@ -466,7 +466,8 @@ async def hybrid_analyze(
             "files_count": files_count,
             "upload_time": datetime.now().isoformat(),
             "roundtrips": roundtrips_serializable.to_dict('records'),
-            "performance": result["performance"]
+            "performance": result["performance"],
+            "open_positions": result.get("open_positions", {"positions": [], "summary": {}})
         }
 
         return JSONResponse({
@@ -501,6 +502,69 @@ async def hybrid_analyze(
                 error_message = f"IBKR fetch failed: {underlying_error}"
         
         raise HTTPException(status_code=400, detail=error_message)
+
+
+@app.get("/api/open-positions/{session_id}")
+async def get_open_positions(session_id: str):
+    """Get open positions with current prices"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Results not found")
+
+    try:
+        # Get stored open positions data
+        stored_data = results_store[session_id]
+        open_positions_data = stored_data.get("open_positions", {"positions": [], "summary": {}})
+        
+        if not open_positions_data["positions"]:
+            return JSONResponse({
+                "positions": [],
+                "summary": {
+                    "total_positions": 0,
+                    "total_cost_basis": 0.0,
+                    "total_market_value": 0.0,
+                    "total_unrealized_pnl": 0.0,
+                    "overall_pnl_pct": 0.0,
+                    "positions_with_prices": 0,
+                    "long_positions": 0,
+                    "short_positions": 0
+                }
+            })
+
+        # Refresh prices for current positions
+        from core.open_positions import calculate_position_pnl, calculate_portfolio_summary
+        positions = open_positions_data["positions"].copy()
+        
+        # Calculate current P&L with fresh prices
+        updated_positions = await calculate_position_pnl(positions)
+        updated_summary = calculate_portfolio_summary(updated_positions)
+        
+        return JSONResponse({
+            "positions": updated_positions,
+            "summary": updated_summary
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting open positions for {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching open positions: {str(e)}")
+
+
+@app.post("/api/refresh-prices/{session_id}")
+async def refresh_prices(session_id: str):
+    """Refresh prices for open positions"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Results not found")
+
+    try:
+        # Clear price cache to force fresh data
+        from core.price_service import price_service
+        price_service.clear_cache()
+        
+        # Get fresh positions data
+        return await get_open_positions(session_id)
+
+    except Exception as e:
+        logger.error(f"Error refreshing prices for {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error refreshing prices: {str(e)}")
 
 
 # Background task to clean up old results (run periodically in production)

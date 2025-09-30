@@ -95,7 +95,7 @@ class DataManager:
             # Process trades using existing processor
             # Convert DataFrame to CSV string for processing
             csv_content = combined_df.to_csv(index=False)
-            roundtrips_df = process_ibkr_csv(csv_content)
+            roundtrips_df, open_long, open_short = process_ibkr_csv(csv_content)
 
             # Apply stock split adjustments
             from core.stock_splits import apply_split_adjustments_to_roundtrips
@@ -108,9 +108,19 @@ class DataManager:
             # Calculate performance
             performance_data = calculate_performance(roundtrips_df)
 
+            # Process open positions
+            from core.open_positions import process_open_positions
+            try:
+                open_positions_data = await process_open_positions(open_long, open_short)
+                logger.info(f"Processed {len(open_positions_data['positions'])} open positions")
+            except Exception as e:
+                logger.warning(f"Could not process open positions: {e}")
+                open_positions_data = {"positions": [], "summary": {}}
+
             return {
                 "roundtrips": roundtrips_df,
-                "performance": performance_data
+                "performance": performance_data,
+                "open_positions": open_positions_data
             }
         else:
             raise ValueError("No valid data found in uploaded files")
@@ -152,7 +162,7 @@ class DataManager:
             # Process ALL trades at once using existing processor
             # Convert DataFrame to CSV string for processing
             csv_content = trades_df.to_csv(index=False)
-            roundtrips_df = process_ibkr_csv(csv_content)
+            roundtrips_df, open_long, open_short = process_ibkr_csv(csv_content)
 
             logger.info(f"Processed into {len(roundtrips_df)} roundtrips")
 
@@ -167,9 +177,19 @@ class DataManager:
             # Calculate performance on ALL historical data combined
             performance_data = calculate_performance(roundtrips_df)
 
+            # Process open positions
+            from core.open_positions import process_open_positions
+            try:
+                open_positions_data = await process_open_positions(open_long, open_short)
+                logger.info(f"Processed {len(open_positions_data['positions'])} open positions")
+            except Exception as e:
+                logger.warning(f"Could not process open positions: {e}")
+                open_positions_data = {"positions": [], "summary": {}}
+
             return {
                 "roundtrips": roundtrips_df,
-                "performance": performance_data
+                "performance": performance_data,
+                "open_positions": open_positions_data
             }
 
         except Exception as e:
@@ -300,7 +320,7 @@ class DataManager:
 
             # 5. Process combined data into roundtrips
             csv_content = combined_df.to_csv(index=False)
-            roundtrips_df = process_ibkr_csv(csv_content)
+            roundtrips_df, open_long, open_short = process_ibkr_csv(csv_content)
             logger.info(f"Processed into {len(roundtrips_df)} roundtrips")
 
             # 5a. Apply stock split adjustments
@@ -314,9 +334,19 @@ class DataManager:
             # 6. Calculate performance
             performance_data = calculate_performance(roundtrips_df)
 
+            # 7. Process open positions
+            from core.open_positions import process_open_positions
+            try:
+                open_positions_data = await process_open_positions(open_long, open_short)
+                logger.info(f"Processed {len(open_positions_data['positions'])} open positions")
+            except Exception as e:
+                logger.warning(f"Could not process open positions: {e}")
+                open_positions_data = {"positions": [], "summary": {}}
+
             return {
                 "roundtrips": roundtrips_df,
-                "performance": performance_data
+                "performance": performance_data,
+                "open_positions": open_positions_data
             }
 
         except Exception as e:
