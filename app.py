@@ -8,7 +8,7 @@ import uuid
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import pandas as pd
 from io import BytesIO
 
@@ -44,6 +44,134 @@ results_store: Dict[str, Dict[str, Any]] = {}
 
 # Initialize data manager
 data_manager = DataManager()
+
+
+def get_average_gain_for_period(performance_data: Dict[str, Any], time_period: str) -> float:
+    """
+    Extract average gain from specified time period
+    
+    Args:
+        performance_data: Performance data dictionary with monthly, quarterly, yearly, since_inception
+        time_period: Period identifier (e.g., "since_inception", "2025", "2025-Q1", "2025-01")
+        
+    Returns:
+        Average gain percentage for the specified period, or 0 if not found
+    """
+    if not performance_data or not time_period:
+        return 0.0
+    
+    time_period = time_period.strip()
+    
+    # Since inception (default)
+    if time_period.lower() == "since_inception":
+        since_inception = performance_data.get("since_inception", {})
+        return since_inception.get("Avg Gain", 0.0)
+    
+    # Yearly data (e.g., "2025")
+    if time_period.isdigit() and len(time_period) == 4:
+        yearly_data = performance_data.get("yearly", [])
+        for year_record in yearly_data:
+            if str(year_record.get("Date", "")).startswith(time_period):
+                return year_record.get("Avg Gain", 0.0)
+        return 0.0
+    
+    # Quarterly data (e.g., "2025-Q1")
+    if "-Q" in time_period.upper():
+        quarterly_data = performance_data.get("quarterly", [])
+        for quarter_record in quarterly_data:
+            quarter_date = str(quarter_record.get("Date", ""))
+            # Match format like "2025-Q1" or "Q1 2025"
+            if time_period.upper() in quarter_date.upper() or quarter_date.upper().startswith(time_period.upper()):
+                return quarter_record.get("Avg Gain", 0.0)
+        return 0.0
+    
+    # Monthly data (e.g., "2025-01" or "2025-01-01")
+    if "-" in time_period and len(time_period) >= 7:
+        monthly_data = performance_data.get("monthly", [])
+        target_year_month = time_period[:7]  # Extract "2025-01" part
+        
+        for month_record in monthly_data:
+            month_date = str(month_record.get("Date", ""))
+            if month_date.startswith(target_year_month):
+                return month_record.get("Avg Gain", 0.0)
+        return 0.0
+    
+    # If no match found, return 0
+    return 0.0
+
+
+def get_available_time_periods(performance_data: Dict[str, Any]) -> List[Dict[str, str]]:
+    """
+    Get list of available time periods from performance data
+    
+    Returns:
+        List of dictionaries with 'value' and 'label' keys for dropdown options
+    """
+    periods = []
+    
+    # Always include since inception
+    since_inception = performance_data.get("since_inception", {})
+    if since_inception:
+        avg_gain = since_inception.get("Avg Gain", 0.0)
+        periods.append({
+            "value": "since_inception",
+            "label": f"Since Inception (Avg: {avg_gain:.2f}%)"
+        })
+    
+    # Add yearly periods
+    yearly_data = performance_data.get("yearly", [])
+    for year_record in yearly_data:
+        date_str = str(year_record.get("Date", ""))
+        avg_gain = year_record.get("Avg Gain", 0.0)
+        if date_str and avg_gain != 0:
+            year = date_str[:4]
+            periods.append({
+                "value": year,
+                "label": f"{year} (Avg: {avg_gain:.2f}%)"
+            })
+    
+    # Add quarterly periods
+    quarterly_data = performance_data.get("quarterly", [])
+    for quarter_record in quarterly_data:
+        date_str = str(quarter_record.get("Date", ""))
+        avg_gain = quarter_record.get("Avg Gain", 0.0)
+        if date_str and avg_gain != 0:
+            # Extract quarter info (format might be "2025-Q1" or "Q1 2025")
+            if "Q" in date_str.upper():
+                periods.append({
+                    "value": date_str,
+                    "label": f"{date_str} (Avg: {avg_gain:.2f}%)"
+                })
+    
+    # Add monthly periods (last 12 months to avoid clutter)
+    monthly_data = performance_data.get("monthly", [])
+    # Sort by date and take last 12 months
+    sorted_monthly = sorted(monthly_data, key=lambda x: str(x.get("Date", "")), reverse=True)[:12]
+    
+    for month_record in sorted_monthly:
+        date_str = str(month_record.get("Date", ""))
+        avg_gain = month_record.get("Avg Gain", 0.0)
+        if date_str and avg_gain != 0:
+            # Extract year-month (e.g., "2025-01")
+            if len(date_str) >= 7:
+                year_month = date_str[:7]
+                # Format as readable month name
+                try:
+                    from datetime import datetime
+                    dt = datetime.strptime(year_month + "-01", "%Y-%m-%d")
+                    month_name = dt.strftime("%B %Y")
+                    periods.append({
+                        "value": year_month,
+                        "label": f"{month_name} (Avg: {avg_gain:.2f}%)"
+                    })
+                except:
+                    # Fallback to raw format
+                    periods.append({
+                        "value": year_month,
+                        "label": f"{year_month} (Avg: {avg_gain:.2f}%)"
+                    })
+    
+    return periods
 
 
 # Pydantic models for request bodies
@@ -532,11 +660,93 @@ async def get_open_positions(session_id: str):
 
         # Refresh prices for current positions
         from core.open_positions import calculate_position_pnl, calculate_portfolio_summary
+        from core.stop_loss_manager import stop_loss_manager
         positions = open_positions_data["positions"].copy()
         
         # Calculate current P&L with fresh prices
         updated_positions = await calculate_position_pnl(positions)
+        
+        # Add stop loss data and R-Multiple calculations
+        stop_losses = stop_loss_manager.get_all_stop_losses(session_id)
+        
+        for position in updated_positions:
+            symbol = position["symbol"]
+            stop_loss = stop_losses.get(symbol)
+            
+            if stop_loss:
+                # Add stop loss information
+                position["stop_loss"] = {
+                    "price": stop_loss.stop_loss_price,
+                    "type": stop_loss.stop_loss_type,
+                    "value": stop_loss.stop_loss_value,
+                    "risk_amount": stop_loss.risk_amount,
+                    "risk_percentage": stop_loss.risk_percentage,
+                    "is_triggered": stop_loss.is_triggered
+                }
+                
+                # Calculate R-Multiple
+                r_multiple = stop_loss_manager.calculate_r_multiple(position, stop_loss)
+                position["r_multiple"] = r_multiple
+                
+                # Calculate free ride recommendations with precise stop loss data
+                free_ride_recommendations = stop_loss_manager.calculate_free_ride_with_stop_loss(position, stop_loss)
+                position["free_ride_recommendations"] = free_ride_recommendations
+                
+                # Find the current actionable free ride recommendation
+                current_recommendation = None
+                for rec in free_ride_recommendations:
+                    if rec["target_reached"]:
+                        current_recommendation = rec
+                        break
+                
+                # If no target reached, show the 1R target
+                if not current_recommendation and free_ride_recommendations:
+                    current_recommendation = free_ride_recommendations[0]  # 1R target
+                
+                position["current_free_ride"] = current_recommendation
+                
+                # Check for new triggers
+                triggered = stop_loss_manager.check_stop_triggers(session_id, [position])
+                if triggered:
+                    position["stop_loss"]["is_triggered"] = True
+            else:
+                position["stop_loss"] = None
+                position["r_multiple"] = None
+                
+                # Calculate free ride recommendations without stop loss (using estimated risk)
+                free_ride_recommendations = stop_loss_manager.calculate_free_ride_shares(position)
+                position["free_ride_recommendations"] = free_ride_recommendations
+                
+                # Find current recommendation based on estimated targets
+                current_recommendation = None
+                for rec in free_ride_recommendations:
+                    if rec["target_reached"]:
+                        current_recommendation = rec
+                        break
+                
+                if not current_recommendation and free_ride_recommendations:
+                    current_recommendation = free_ride_recommendations[0]  # 1R target
+                
+                position["current_free_ride"] = current_recommendation
+        
+        # Calculate enhanced portfolio summary with risk metrics
         updated_summary = calculate_portfolio_summary(updated_positions)
+        
+        # Add risk management metrics to summary
+        total_risk = sum(pos.get("stop_loss", {}).get("risk_amount", 0) for pos in updated_positions if pos.get("stop_loss"))
+        active_stops = sum(1 for pos in updated_positions if pos.get("stop_loss") and not pos["stop_loss"].get("is_triggered", False))
+        triggered_stops = sum(1 for pos in updated_positions if pos.get("stop_loss") and pos["stop_loss"].get("is_triggered", False))
+        
+        # Calculate average R-Multiple
+        r_multiples = [pos["r_multiple"] for pos in updated_positions if pos.get("r_multiple") is not None]
+        avg_r_multiple = sum(r_multiples) / len(r_multiples) if r_multiples else 0
+        
+        updated_summary.update({
+            "total_risk_exposure": total_risk,
+            "active_stops_count": active_stops,
+            "triggered_stops_count": triggered_stops,
+            "average_r_multiple": avg_r_multiple
+        })
         
         return JSONResponse({
             "positions": updated_positions,
@@ -565,6 +775,215 @@ async def refresh_prices(session_id: str):
     except Exception as e:
         logger.error(f"Error refreshing prices for {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error refreshing prices: {str(e)}")
+
+
+@app.post("/api/set-stop-loss/{session_id}")
+async def set_stop_loss(session_id: str, request: dict):
+    """Set stop loss for a position"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Results not found")
+    
+    try:
+        from core.stop_loss_manager import stop_loss_manager
+        
+        # Extract request data
+        symbol = request.get("symbol")
+        stop_type = request.get("stop_type")  # "amount" or "percentage"
+        stop_value = request.get("stop_value")
+        
+        if not all([symbol, stop_type, stop_value is not None]):
+            raise HTTPException(status_code=400, detail="Missing required fields: symbol, stop_type, stop_value")
+        
+        # Get position data
+        stored_data = results_store[session_id]
+        open_positions_data = stored_data.get("open_positions", {"positions": []})
+        
+        # Find the position
+        position = None
+        for pos in open_positions_data["positions"]:
+            if pos["symbol"] == symbol:
+                position = pos
+                break
+        
+        if not position:
+            raise HTTPException(status_code=404, detail=f"Position not found for symbol: {symbol}")
+        
+        # Set stop loss
+        stop_loss = stop_loss_manager.set_stop_loss(session_id, position, stop_type, float(stop_value))
+        
+        return JSONResponse({
+            "success": True,
+            "message": f"Stop loss set for {symbol}",
+            "stop_loss": stop_loss.to_dict()
+        })
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error setting stop loss for {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error setting stop loss: {str(e)}")
+
+
+@app.delete("/api/remove-stop-loss/{session_id}/{symbol}")
+async def remove_stop_loss(session_id: str, symbol: str):
+    """Remove stop loss for a position"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Results not found")
+    
+    try:
+        from core.stop_loss_manager import stop_loss_manager
+        
+        success = stop_loss_manager.remove_stop_loss(session_id, symbol)
+        
+        if success:
+            return JSONResponse({
+                "success": True,
+                "message": f"Stop loss removed for {symbol}"
+            })
+        else:
+            raise HTTPException(status_code=404, detail=f"No stop loss found for {symbol}")
+            
+    except Exception as e:
+        logger.error(f"Error removing stop loss for {session_id}/{symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error removing stop loss: {str(e)}")
+
+
+@app.get("/api/stop-losses/{session_id}")
+async def get_stop_losses(session_id: str):
+    """Get all stop losses for a session"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Results not found")
+    
+    try:
+        from core.stop_loss_manager import stop_loss_manager
+        
+        stop_losses = stop_loss_manager.get_all_stop_losses(session_id)
+        
+        # Convert to serializable format
+        stop_losses_dict = {symbol: stop_loss.to_dict() for symbol, stop_loss in stop_losses.items()}
+        
+        return JSONResponse({
+            "stop_losses": stop_losses_dict
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting stop losses for {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting stop losses: {str(e)}")
+
+
+@app.post("/api/apply-risk-ratio/{session_id}")
+async def apply_risk_ratio(session_id: str, request: dict):
+    """Apply risk ratio to all open positions based on average gain"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Results not found")
+    
+    try:
+        from core.stop_loss_manager import stop_loss_manager
+        
+        # Extract request data
+        risk_ratio = request.get("risk_ratio")  # e.g., "2:1", "3:1", "4:1", "none"
+        time_period = request.get("time_period", "since_inception")  # Default to since_inception
+        
+        if not risk_ratio:
+            raise HTTPException(status_code=400, detail="Missing risk_ratio parameter")
+        
+        if risk_ratio == "none":
+            # Clear all stop losses
+            stop_loss_manager.clear_session(session_id)
+            return JSONResponse({
+                "success": True,
+                "message": "All stop losses cleared. Set individual stop losses as needed."
+            })
+        
+        # Parse risk ratio (e.g., "2:1" means stop loss should be 1/2 of average gain)
+        if ":" not in risk_ratio:
+            raise HTTPException(status_code=400, detail="Invalid risk ratio format. Use format like '2:1'")
+        
+        ratio_parts = risk_ratio.split(":")
+        if len(ratio_parts) != 2:
+            raise HTTPException(status_code=400, detail="Invalid risk ratio format. Use format like '2:1'")
+        
+        try:
+            reward_multiple = float(ratio_parts[0])
+            risk_multiple = float(ratio_parts[1])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid risk ratio values. Must be numbers.")
+        
+        # Get performance data to calculate average gain for specified period
+        stored_data = results_store[session_id]
+        performance_data = stored_data.get("performance", {})
+        average_gain = get_average_gain_for_period(performance_data, time_period)
+        
+        if average_gain <= 0:
+            raise HTTPException(status_code=400, detail=f"No positive average gain found for period '{time_period}'. Cannot calculate risk ratio.")
+        
+        # Calculate stop loss percentage based on risk ratio
+        # If average gain is 6% and ratio is 2:1, stop loss should be 3%
+        stop_loss_percentage = (average_gain * risk_multiple) / reward_multiple
+        
+        # Get open positions
+        open_positions_data = stored_data.get("open_positions", {"positions": []})
+        positions = open_positions_data["positions"]
+        
+        if not positions:
+            raise HTTPException(status_code=400, detail="No open positions found")
+        
+        # Apply stop loss to all positions
+        applied_count = 0
+        errors = []
+        
+        for position in positions:
+            try:
+                stop_loss = stop_loss_manager.set_stop_loss(
+                    session_id, 
+                    position, 
+                    "percentage", 
+                    stop_loss_percentage
+                )
+                applied_count += 1
+            except Exception as e:
+                errors.append(f"{position['symbol']}: {str(e)}")
+        
+        message = f"Applied {risk_ratio} risk ratio to {applied_count} positions. "
+        message += f"Stop loss set to {stop_loss_percentage:.2f}% (based on {average_gain:.2f}% avg gain from {time_period})."
+        
+        if errors:
+            message += f" Errors: {'; '.join(errors)}"
+        
+        return JSONResponse({
+            "success": True,
+            "message": message,
+            "applied_count": applied_count,
+            "stop_loss_percentage": stop_loss_percentage,
+            "average_gain": average_gain,
+            "errors": errors
+        })
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error applying risk ratio for {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error applying risk ratio: {str(e)}")
+
+
+@app.get("/api/time-periods/{session_id}")
+async def get_time_periods(session_id: str):
+    """Get available time periods for risk ratio calculations"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Results not found")
+    
+    try:
+        stored_data = results_store[session_id]
+        performance_data = stored_data.get("performance", {})
+        periods = get_available_time_periods(performance_data)
+        
+        return JSONResponse({
+            "periods": periods
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting time periods for {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting time periods: {str(e)}")
 
 
 # Background task to clean up old results (run periodically in production)

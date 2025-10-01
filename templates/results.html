@@ -432,9 +432,31 @@
                             <i class="bi bi-briefcase me-2"></i>Open Positions
                         </h5>
                         <div>
-                            <button class="btn btn-sm btn-outline-primary me-2" id="refreshPricesBtn">
-                                <i class="bi bi-arrow-clockwise me-1"></i>Refresh Prices
-                            </button>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center">
+                                    <label for="timePeriodSelect" class="form-label me-2 mb-0 fw-bold">Time Period:</label>
+                                    <select class="form-select form-select-sm" id="timePeriodSelect" style="min-width: 180px;">
+                                        <option value="since_inception">Since Inception</option>
+                                        <!-- Options will be populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="d-flex align-items-center">
+                                    <label for="riskRatioSelect" class="form-label me-2 mb-0 fw-bold">Risk Ratio:</label>
+                                    <select class="form-select form-select-sm" id="riskRatioSelect" style="min-width: 120px;">
+                                        <option value="none">Individual</option>
+                                        <option value="2:1">2:1 (50%)</option>
+                                        <option value="3:1">3:1 (33%)</option>
+                                        <option value="4:1">4:1 (25%)</option>
+                                        <option value="5:1">5:1 (20%)</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-sm btn-success" id="applyRiskRatioBtn">
+                                    <i class="bi bi-shield-check me-1"></i>Apply to All
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" id="refreshPricesBtn">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh Prices
+                                </button>
+                            </div>
                             <small class="text-muted" id="lastUpdated"></small>
                         </div>
                     </div>
@@ -462,7 +484,8 @@
 
                         <!-- Summary Cards -->
                         <div id="openPositionsSummary" class="d-none">
-                            <div class="row mb-4">
+                            <!-- First Row - Portfolio Metrics -->
+                            <div class="row mb-3">
                                 <div class="col-md-3">
                                     <div class="card text-center h-100 summary-card">
                                         <div class="card-body">
@@ -500,6 +523,46 @@
                                     </div>
                                 </div>
                             </div>
+                            
+                            <!-- Second Row - Risk Management Metrics -->
+                            <div class="row mb-4">
+                                <div class="col-md-3">
+                                    <div class="card text-center h-100 summary-card">
+                                        <div class="card-body">
+                                            <i class="bi bi-shield-exclamation text-warning display-6 mb-2"></i>
+                                            <h6 class="card-title text-warning" id="totalRiskExposure">$0.00</h6>
+                                            <p class="card-text text-muted small">Total Risk</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card text-center h-100 summary-card">
+                                        <div class="card-body">
+                                            <i class="bi bi-check-circle text-info display-6 mb-2"></i>
+                                            <h6 class="card-title text-info" id="activeStopsCount">0</h6>
+                                            <p class="card-text text-muted small">Active Stops</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card text-center h-100 summary-card">
+                                        <div class="card-body">
+                                            <i class="bi bi-exclamation-triangle text-danger display-6 mb-2"></i>
+                                            <h6 class="card-title text-danger" id="triggeredStopsCount">0</h6>
+                                            <p class="card-text text-muted small">Triggered Stops</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card text-center h-100 summary-card">
+                                        <div class="card-body">
+                                            <i class="bi bi-calculator text-success display-6 mb-2"></i>
+                                            <h6 class="card-title text-success" id="averageRMultiple">0.00R</h6>
+                                            <p class="card-text text-muted small">Avg R-Multiple</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Positions Table -->
@@ -513,11 +576,13 @@
                                             <th class="text-end">Quantity</th>
                                             <th class="text-end">Avg Price</th>
                                             <th class="text-end">Current Price</th>
-                                            <th class="text-end">Cost Basis</th>
-                                            <th class="text-end">Market Value</th>
+                                            <th class="text-end">Stop Loss</th>
+                                            <th class="text-end">Risk ($)</th>
+                                            <th class="text-end">R-Multiple</th>
+                                            <th class="text-end">SBE</th>
                                             <th class="text-end">P&L ($)</th>
                                             <th class="text-end">P&L (%)</th>
-                                            <th class="text-end">Orders</th>
+                                            <th class="text-center">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="openPositionsTableBody">
@@ -562,6 +627,104 @@
         </div>
     </div>
 </div>
+
+<!-- Stop Loss Modal -->
+<div class="modal fade" id="stopLossModal" tabindex="-1" aria-labelledby="stopLossModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stopLossModalLabel">
+                    <i class="bi bi-shield-exclamation me-2"></i>Set Stop Loss
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="stopLossForm">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Position Details</label>
+                        <div class="card bg-light">
+                            <div class="card-body py-2">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Symbol:</small>
+                                        <div id="modalSymbol" class="fw-bold">-</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Type:</small>
+                                        <div id="modalPositionType" class="fw-bold">-</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Entry Price:</small>
+                                        <div id="modalEntryPrice" class="fw-bold">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Stop Loss Type</label>
+                        <div class="btn-group w-100" role="group" aria-label="Stop loss type">
+                            <input type="radio" class="btn-check" name="stopType" id="stopTypeAmount" value="amount" checked>
+                            <label class="btn btn-outline-primary" for="stopTypeAmount">
+                                <i class="bi bi-currency-dollar me-1"></i>Dollar Amount
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="stopType" id="stopTypePercentage" value="percentage">
+                            <label class="btn btn-outline-primary" for="stopTypePercentage">
+                                <i class="bi bi-percent me-1"></i>Percentage
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="stopValue" class="form-label fw-bold">Stop Loss Value</label>
+                        <div class="input-group">
+                            <span class="input-group-text" id="stopValuePrefix">$</span>
+                            <input type="number" class="form-control" id="stopValue" step="0.01" min="0" required>
+                            <span class="input-group-text" id="stopValueSuffix"></span>
+                        </div>
+                        <div class="form-text" id="stopValueHelp">Enter the dollar amount to risk per share</div>
+                    </div>
+                    
+                    <div class="alert alert-info" role="alert">
+                        <h6 class="alert-heading">
+                            <i class="bi bi-calculator me-1"></i>Risk Calculation Preview
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted">Stop Loss Price:</small>
+                                <div id="previewStopPrice" class="fw-bold">-</div>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted">Total Risk:</small>
+                                <div id="previewTotalRisk" class="fw-bold">-</div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted">Risk per Share:</small>
+                                <div id="previewRiskPerShare" class="fw-bold">-</div>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted">Risk %:</small>
+                                <div id="previewRiskPercentage" class="fw-bold">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveStopLossBtn">
+                    <i class="bi bi-shield-check me-1"></i>Set Stop Loss
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -591,6 +754,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize open positions when tab is shown
     if (openPositionsTab) {
         openPositionsTab.addEventListener('shown.bs.tab', function() {
+            loadTimePeriods(); // Load available time periods first
             loadOpenPositions();
             startAutoRefresh();
         });
@@ -610,7 +774,65 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         initializeCharts();
     }, 100);
+    
+    // Stop Loss Modal Event Listeners
+    const stopTypeRadios = document.querySelectorAll('input[name="stopType"]');
+    stopTypeRadios.forEach(radio => {
+        radio.addEventListener('change', updateStopTypeUI);
+    });
+    
+    const stopValueInput = document.getElementById('stopValue');
+    if (stopValueInput) {
+        stopValueInput.addEventListener('input', calculateStopLossPreview);
+    }
+    
+    const saveStopLossBtn = document.getElementById('saveStopLossBtn');
+    if (saveStopLossBtn) {
+        saveStopLossBtn.addEventListener('click', saveStopLoss);
+    }
+    
+    // Risk Ratio Application
+    const applyRiskRatioBtn = document.getElementById('applyRiskRatioBtn');
+    if (applyRiskRatioBtn) {
+        applyRiskRatioBtn.addEventListener('click', applyRiskRatio);
+    }
 });
+
+async function loadTimePeriods() {
+    try {
+        const response = await fetch(`/api/time-periods/${SESSION_ID}`);
+        const data = await response.json();
+        
+        if (response.ok && data.periods) {
+            const timePeriodSelect = document.getElementById('timePeriodSelect');
+            if (timePeriodSelect) {
+                // Clear existing options except the first one
+                timePeriodSelect.innerHTML = '';
+                
+                // Populate with available periods
+                data.periods.forEach(period => {
+                    const option = document.createElement('option');
+                    option.value = period.value;
+                    option.textContent = period.label;
+                    timePeriodSelect.appendChild(option);
+                });
+                
+                // Set default to since_inception if available
+                if (data.periods.length > 0) {
+                    const defaultPeriod = data.periods.find(p => p.value === 'since_inception');
+                    if (defaultPeriod) {
+                        timePeriodSelect.value = 'since_inception';
+                    } else {
+                        timePeriodSelect.value = data.periods[0].value;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error loading time periods:', error);
+        // Keep default option if error occurs
+    }
+}
 
 async function loadOpenPositions() {
     showLoadingState();
@@ -667,6 +889,9 @@ function displayOpenPositions(data) {
         return;
     }
     
+    // Store positions data for modal calculations
+    window.lastPositionsData = data.positions;
+    
     // Show summary and table
     document.getElementById('openPositionsSummary').classList.remove('d-none');
     document.getElementById('openPositionsTable').classList.remove('d-none');
@@ -702,6 +927,33 @@ function updateSummaryCards(summary) {
     overallPctElement.textContent = formatPercentage(overallPct);
     overallPctElement.className = `card-title ${overallPct >= 0 ? 'text-success' : 'text-danger'}`;
     overallPnlIcon.className = `bi bi-percent ${overallPct >= 0 ? 'text-success' : 'text-danger'} display-6 mb-2`;
+    
+    // Risk Management Metrics
+    // Total Risk Exposure
+    const totalRisk = summary.total_risk_exposure || 0;
+    document.getElementById('totalRiskExposure').textContent = formatCurrency(totalRisk);
+    
+    // Active Stops Count
+    const activeStops = summary.active_stops_count || 0;
+    document.getElementById('activeStopsCount').textContent = activeStops;
+    
+    // Triggered Stops Count
+    const triggeredStops = summary.triggered_stops_count || 0;
+    document.getElementById('triggeredStopsCount').textContent = triggeredStops;
+    
+    // Average R-Multiple
+    const avgRMultiple = summary.average_r_multiple || 0;
+    const avgRElement = document.getElementById('averageRMultiple');
+    const rText = `${avgRMultiple.toFixed(2)}R`;
+    
+    avgRElement.textContent = rText;
+    if (avgRMultiple >= 1) {
+        avgRElement.className = 'card-title text-success';
+    } else if (avgRMultiple >= 0) {
+        avgRElement.className = 'card-title text-warning';
+    } else {
+        avgRElement.className = 'card-title text-danger';
+    }
 }
 
 function updatePositionsTable(positions) {
@@ -716,6 +968,93 @@ function updatePositionsTable(positions) {
         const pnlClass = (pnlDollar >= 0) ? 'text-success' : 'text-danger';
         const currentPriceDisplay = position.current_price ? `$${position.current_price.toFixed(4)}` : 'N/A';
         
+        // Stop loss and risk information
+        const stopLoss = position.stop_loss;
+        const rMultiple = position.r_multiple;
+        
+        let stopLossDisplay = 'Not Set';
+        let riskDisplay = '-';
+        let rMultipleDisplay = '-';
+        let actionsHtml = `<button class="btn btn-sm btn-outline-primary" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Set Stop</button>`;
+        
+        if (stopLoss) {
+            stopLossDisplay = `$${stopLoss.price.toFixed(4)}`;
+            riskDisplay = formatCurrency(stopLoss.risk_amount);
+            
+            if (stopLoss.is_triggered) {
+                stopLossDisplay += ' <span class="badge bg-danger ms-1">TRIGGERED</span>';
+                row.classList.add('table-danger'); // Red background for triggered stops
+            }
+            
+            actionsHtml = `
+                <button class="btn btn-sm btn-outline-danger" onclick="removeStopLoss('${position.symbol}')">Remove</button>
+                <button class="btn btn-sm btn-outline-secondary ms-1" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Edit</button>
+            `;
+        }
+        
+        if (rMultiple !== null && rMultiple !== undefined) {
+            const rValue = Math.abs(rMultiple);
+            let rClass = 'text-muted';
+            let rText = `${rMultiple.toFixed(2)}R`;
+            
+            if (rMultiple >= 1) {
+                rClass = 'text-success fw-bold';
+                // Highlight R-Multiple milestones
+                if (rMultiple >= 2 && rMultiple < 3) {
+                    row.classList.add('table-success');
+                } else if (rMultiple >= 3) {
+                    row.classList.add('table-success');
+                    rText += ' 🎯';
+                }
+            } else if (rMultiple >= 0.5) {
+                rClass = 'text-warning';
+            } else if (rMultiple < 0) {
+                rClass = 'text-danger';
+            }
+            
+            rMultipleDisplay = `<span class="${rClass}">${rText}</span>`;
+        }
+        
+        // SBE (Shares to Break Even) Information
+        let sbeDisplay = '-';
+        
+        // Always calculate SBE based on current price if available
+        if (position.current_price && position.current_price > 0 && position.cost_basis) {
+            const sharesToSell = Math.round(position.cost_basis / position.current_price);
+            const sbePercentage = (sharesToSell / position.quantity) * 100;
+            
+            if (sharesToSell > 0 && sharesToSell < position.quantity) {
+                // Can freeroll - show shares to sell
+                const sharesRemaining = position.quantity - sharesToSell;
+                const recoveryAmount = sharesToSell * position.current_price;
+                
+                // Color based on profitability
+                let colorClass = 'text-muted';
+                if (position.unrealized_pnl > 0) {
+                    colorClass = 'text-success fw-bold';
+                    // Add green highlighting for profitable positions
+                    if (!row.classList.contains('table-danger')) {
+                        row.classList.add('table-success');
+                    }
+                }
+                
+                sbeDisplay = `
+                    <span class="${colorClass}" title="SBE: Sell ${sharesToSell} shares (${sbePercentage.toFixed(1)}%) at $${position.current_price.toFixed(4)} to recover $${recoveryAmount.toFixed(2)} and freeroll ${sharesRemaining} shares">
+                        ${sharesToSell}
+                        <small class="text-muted">(${sbePercentage.toFixed(0)}%)</small>
+                    </span>
+                `;
+            } else if (sharesToSell >= position.quantity) {
+                // Need to sell all shares (position not profitable enough for freeroll)
+                sbeDisplay = `<span class="text-warning" title="Current price $${position.current_price.toFixed(4)} is not high enough to freeroll. Would need to sell all ${position.quantity} shares.">All</span>`;
+            } else {
+                sbeDisplay = '<span class="text-muted">0</span>';
+            }
+        } else {
+            // No current price available
+            sbeDisplay = '<span class="text-muted">-</span>';
+        }
+        
         row.innerHTML = `
             <td><strong>${position.symbol}</strong></td>
             <td>
@@ -726,15 +1065,17 @@ function updatePositionsTable(positions) {
             <td class="text-end">${position.quantity.toLocaleString()}</td>
             <td class="text-end">$${position.avg_entry_price.toFixed(4)}</td>
             <td class="text-end">${currentPriceDisplay}</td>
-            <td class="text-end">${formatCurrency(position.cost_basis)}</td>
-            <td class="text-end">${position.market_value ? formatCurrency(position.market_value) : 'N/A'}</td>
+            <td class="text-end">${stopLossDisplay}</td>
+            <td class="text-end">${riskDisplay}</td>
+            <td class="text-end">${rMultipleDisplay}</td>
+            <td class="text-end">${sbeDisplay}</td>
             <td class="text-end ${pnlClass}">
                 ${pnlDollar !== null ? formatCurrency(pnlDollar) : 'N/A'}
             </td>
             <td class="text-end ${pnlClass}">
                 ${pnlPercent !== null ? formatPercentage(pnlPercent) : 'N/A'}
             </td>
-            <td class="text-end">${position.orders_count}</td>
+            <td class="text-center">${actionsHtml}</td>
         `;
         
         tbody.appendChild(row);
@@ -743,21 +1084,31 @@ function updatePositionsTable(positions) {
 
 function showLoadingState() {
     hideAllStates();
-    document.getElementById('openPositionsLoading').classList.remove('d-none');
+    const loading = document.getElementById('openPositionsLoading');
+    if (loading) loading.classList.remove('d-none');
 }
 
 function showError(message) {
     hideAllStates();
-    document.getElementById('errorMessage').textContent = message;
-    document.getElementById('openPositionsError').classList.remove('d-none');
+    const errorMsg = document.getElementById('errorMessage');
+    const errorDiv = document.getElementById('openPositionsError');
+    
+    if (errorMsg) errorMsg.textContent = message;
+    if (errorDiv) errorDiv.classList.remove('d-none');
 }
 
 function hideAllStates() {
-    document.getElementById('openPositionsLoading').classList.add('d-none');
-    document.getElementById('openPositionsError').classList.add('d-none');
-    document.getElementById('noOpenPositions').classList.add('d-none');
-    document.getElementById('openPositionsSummary').classList.add('d-none');
-    document.getElementById('openPositionsTable').classList.add('d-none');
+    const loading = document.getElementById('openPositionsLoading');
+    const error = document.getElementById('openPositionsError');
+    const noPositions = document.getElementById('noOpenPositions');
+    const summary = document.getElementById('openPositionsSummary');
+    const table = document.getElementById('openPositionsTable');
+    
+    if (loading) loading.classList.add('d-none');
+    if (error) error.classList.add('d-none');
+    if (noPositions) noPositions.classList.add('d-none');
+    if (summary) summary.classList.add('d-none');
+    if (table) table.classList.add('d-none');
 }
 
 function updateLastUpdated() {
@@ -797,6 +1148,296 @@ function formatPercentage(value) {
         return 'N/A';
     }
     return `${value.toFixed(2)}%`;
+}
+
+// Stop Loss Modal Management
+let currentPosition = null;
+
+function showStopLossModal(symbol, entryPrice, positionType) {
+    currentPosition = { symbol, entryPrice, positionType };
+    
+    // Update modal with position details
+    document.getElementById('modalSymbol').textContent = symbol;
+    document.getElementById('modalPositionType').textContent = positionType;
+    document.getElementById('modalEntryPrice').textContent = `$${entryPrice.toFixed(4)}`;
+    
+    // Reset form
+    document.getElementById('stopLossForm').reset();
+    document.getElementById('stopTypeAmount').checked = true;
+    updateStopTypeUI();
+    
+    // Clear preview
+    clearStopLossPreview();
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('stopLossModal'));
+    modal.show();
+}
+
+function updateStopTypeUI() {
+    const isAmount = document.getElementById('stopTypeAmount').checked;
+    const prefix = document.getElementById('stopValuePrefix');
+    const suffix = document.getElementById('stopValueSuffix');
+    const help = document.getElementById('stopValueHelp');
+    
+    if (isAmount) {
+        prefix.textContent = '$';
+        suffix.textContent = '';
+        help.textContent = 'Enter the dollar amount to risk per share';
+    } else {
+        prefix.textContent = '';
+        suffix.textContent = '%';
+        help.textContent = 'Enter the percentage of entry price to risk';
+    }
+    
+    // Clear and recalculate preview
+    document.getElementById('stopValue').value = '';
+    clearStopLossPreview();
+}
+
+function calculateStopLossPreview() {
+    if (!currentPosition) return;
+    
+    const stopValue = parseFloat(document.getElementById('stopValue').value);
+    if (isNaN(stopValue) || stopValue <= 0) {
+        clearStopLossPreview();
+        return;
+    }
+    
+    const { symbol, entryPrice, positionType } = currentPosition;
+    const isAmount = document.getElementById('stopTypeAmount').checked;
+    
+    let stopPrice;
+    let riskPerShare;
+    
+    if (positionType.toLowerCase() === 'long') {
+        if (isAmount) {
+            stopPrice = entryPrice - stopValue;
+            riskPerShare = stopValue;
+        } else {
+            stopPrice = entryPrice * (1 - stopValue / 100);
+            riskPerShare = entryPrice - stopPrice;
+        }
+    } else { // short
+        if (isAmount) {
+            stopPrice = entryPrice + stopValue;
+            riskPerShare = stopValue;
+        } else {
+            stopPrice = entryPrice * (1 + stopValue / 100);
+            riskPerShare = stopPrice - entryPrice;
+        }
+    }
+    
+    // Find position to get quantity
+    const positionsData = getStoredPositionsData();
+    const position = positionsData.find(p => p.symbol === symbol);
+    const quantity = position ? position.quantity : 0;
+    const costBasis = position ? position.cost_basis : entryPrice * quantity;
+    
+    const totalRisk = riskPerShare * quantity;
+    const riskPercentage = costBasis > 0 ? (totalRisk / costBasis * 100) : 0;
+    
+    // Update preview
+    document.getElementById('previewStopPrice').textContent = `$${Math.max(0, stopPrice).toFixed(4)}`;
+    document.getElementById('previewRiskPerShare').textContent = `$${riskPerShare.toFixed(4)}`;
+    document.getElementById('previewTotalRisk').textContent = formatCurrency(totalRisk);
+    document.getElementById('previewRiskPercentage').textContent = `${riskPercentage.toFixed(2)}%`;
+}
+
+function clearStopLossPreview() {
+    document.getElementById('previewStopPrice').textContent = '-';
+    document.getElementById('previewRiskPerShare').textContent = '-';
+    document.getElementById('previewTotalRisk').textContent = '-';
+    document.getElementById('previewRiskPercentage').textContent = '-';
+}
+
+function getStoredPositionsData() {
+    // This is a simple way to get current positions data
+    // In a real implementation, you might want to store this more robustly
+    const tbody = document.getElementById('openPositionsTableBody');
+    const positions = [];
+    // This is a simplified version - in production you'd want to store the full data
+    return window.lastPositionsData || [];
+}
+
+async function saveStopLoss() {
+    if (!currentPosition) return;
+    
+    const stopValue = parseFloat(document.getElementById('stopValue').value);
+    const stopType = document.getElementById('stopTypeAmount').checked ? 'amount' : 'percentage';
+    
+    if (isNaN(stopValue) || stopValue <= 0) {
+        alert('Please enter a valid stop loss value.');
+        return;
+    }
+    
+    const saveBtn = document.getElementById('saveStopLossBtn');
+    const originalText = saveBtn.innerHTML;
+    
+    try {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Setting...';
+        
+        const response = await fetch(`/api/set-stop-loss/${SESSION_ID}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                symbol: currentPosition.symbol,
+                stop_type: stopType,
+                stop_value: stopValue
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('stopLossModal'));
+            modal.hide();
+            
+            // Refresh positions to show updated stop loss
+            await loadOpenPositions();
+            
+            // Show success message
+            showNotification('success', `Stop loss set for ${currentPosition.symbol}`);
+        } else {
+            throw new Error(result.detail || 'Failed to set stop loss');
+        }
+        
+    } catch (error) {
+        console.error('Error setting stop loss:', error);
+        showNotification('error', `Error setting stop loss: ${error.message}`);
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalText;
+    }
+}
+
+async function removeStopLoss(symbol) {
+    if (!confirm(`Remove stop loss for ${symbol}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/remove-stop-loss/${SESSION_ID}/${symbol}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // Refresh positions
+            await loadOpenPositions();
+            showNotification('success', `Stop loss removed for ${symbol}`);
+        } else {
+            throw new Error(result.detail || 'Failed to remove stop loss');
+        }
+        
+    } catch (error) {
+        console.error('Error removing stop loss:', error);
+        showNotification('error', `Error removing stop loss: ${error.message}`);
+    }
+}
+
+function showNotification(type, message) {
+    // Simple notification system
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const icon = type === 'success' ? 'check-circle' : 'exclamation-triangle';
+    
+    const notification = document.createElement('div');
+    notification.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="bi bi-${icon} me-2"></i>${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+async function applyRiskRatio() {
+    const riskRatioSelect = document.getElementById('riskRatioSelect');
+    const timePeriodSelect = document.getElementById('timePeriodSelect');
+    const selectedRatio = riskRatioSelect.value;
+    const selectedPeriod = timePeriodSelect.value;
+    
+    if (!selectedRatio) {
+        showNotification('error', 'Please select a risk ratio');
+        return;
+    }
+    
+    if (!selectedPeriod) {
+        showNotification('error', 'Please select a time period');
+        return;
+    }
+    
+    // Get the period display text for confirmation
+    const periodText = timePeriodSelect.options[timePeriodSelect.selectedIndex].text;
+    
+    let confirmMessage;
+    if (selectedRatio === 'none') {
+        confirmMessage = 'This will remove all existing stop losses. Continue?';
+    } else {
+        confirmMessage = `Apply ${selectedRatio} risk ratio to all open positions based on ${periodText}? This will set stop losses and may override existing stop losses.`;
+    }
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    const applyBtn = document.getElementById('applyRiskRatioBtn');
+    const originalText = applyBtn.innerHTML;
+    
+    try {
+        applyBtn.disabled = true;
+        applyBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Applying...';
+        
+        const response = await fetch(`/api/apply-risk-ratio/${SESSION_ID}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                risk_ratio: selectedRatio,
+                time_period: selectedPeriod
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // Refresh positions to show updated stop losses
+            await loadOpenPositions();
+            
+            // Show detailed success message
+            showNotification('success', result.message);
+            
+            // Log details for debugging
+            if (result.applied_count) {
+                console.log(`Applied ${selectedRatio} ratio to ${result.applied_count} positions`);
+                console.log(`Stop loss percentage: ${result.stop_loss_percentage?.toFixed(2)}%`);
+                console.log(`Based on average gain: ${result.average_gain?.toFixed(2)}%`);
+            }
+        } else {
+            throw new Error(result.detail || 'Failed to apply risk ratio');
+        }
+        
+    } catch (error) {
+        console.error('Error applying risk ratio:', error);
+        showNotification('error', `Error applying risk ratio: ${error.message}`);
+    } finally {
+        applyBtn.disabled = false;
+        applyBtn.innerHTML = originalText;
+    }
 }
 </script>
 <script>
