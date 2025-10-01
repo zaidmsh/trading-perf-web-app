@@ -111,7 +111,7 @@ class DataManager:
             # Process open positions
             from core.open_positions import process_open_positions
             try:
-                open_positions_data = await process_open_positions(open_long, open_short)
+                open_positions_data = await process_open_positions(open_long, open_short, roundtrips_df)
                 logger.info(f"Processed {len(open_positions_data['positions'])} open positions")
             except Exception as e:
                 logger.warning(f"Could not process open positions: {e}")
@@ -180,7 +180,7 @@ class DataManager:
             # Process open positions
             from core.open_positions import process_open_positions
             try:
-                open_positions_data = await process_open_positions(open_long, open_short)
+                open_positions_data = await process_open_positions(open_long, open_short, roundtrips_df)
                 logger.info(f"Processed {len(open_positions_data['positions'])} open positions")
             except Exception as e:
                 logger.warning(f"Could not process open positions: {e}")
@@ -337,7 +337,7 @@ class DataManager:
             # 7. Process open positions
             from core.open_positions import process_open_positions
             try:
-                open_positions_data = await process_open_positions(open_long, open_short)
+                open_positions_data = await process_open_positions(open_long, open_short, roundtrips_df)
                 logger.info(f"Processed {len(open_positions_data['positions'])} open positions")
             except Exception as e:
                 logger.warning(f"Could not process open positions: {e}")

@@ -434,15 +434,19 @@
                         <div>
                             <div class="d-flex align-items-center gap-3">
                                 <div class="d-flex align-items-center">
-                                    <label for="timePeriodSelect" class="form-label me-2 mb-0 fw-bold">Time Period:</label>
-                                    <select class="form-select form-select-sm" id="timePeriodSelect" style="min-width: 180px;">
+                                    <label for="timePeriodSelect" class="form-label me-2 mb-0 fw-bold">
+                                        <i class="bi bi-clock me-1 text-primary"></i>Time Period:
+                                    </label>
+                                    <select class="form-select form-select-sm custom-select" id="timePeriodSelect" style="min-width: 180px;">
                                         <option value="since_inception">Since Inception</option>
                                         <!-- Options will be populated dynamically -->
                                     </select>
                                 </div>
                                 <div class="d-flex align-items-center">
-                                    <label for="riskRatioSelect" class="form-label me-2 mb-0 fw-bold">Risk Ratio:</label>
-                                    <select class="form-select form-select-sm" id="riskRatioSelect" style="min-width: 120px;">
+                                    <label for="riskRatioSelect" class="form-label me-2 mb-0 fw-bold">
+                                        <i class="bi bi-calculator me-1 text-success"></i>Risk Ratio:
+                                    </label>
+                                    <select class="form-select form-select-sm custom-select" id="riskRatioSelect" style="min-width: 120px;">
                                         <option value="none">Individual</option>
                                         <option value="2:1">2:1 (50%)</option>
                                         <option value="3:1">3:1 (33%)</option>
@@ -450,9 +454,6 @@
                                         <option value="5:1">5:1 (20%)</option>
                                     </select>
                                 </div>
-                                <button class="btn btn-sm btn-success" id="applyRiskRatioBtn">
-                                    <i class="bi bi-shield-check me-1"></i>Apply to All
-                                </button>
                                 <button class="btn btn-sm btn-outline-primary" id="refreshPricesBtn">
                                     <i class="bi bi-arrow-clockwise me-1"></i>Refresh Prices
                                 </button>
@@ -556,9 +557,9 @@
                                 <div class="col-md-3">
                                     <div class="card text-center h-100 summary-card">
                                         <div class="card-body">
-                                            <i class="bi bi-calculator text-success display-6 mb-2"></i>
-                                            <h6 class="card-title text-success" id="averageRMultiple">0.00R</h6>
-                                            <p class="card-text text-muted small">Avg R-Multiple</p>
+                                            <i class="bi bi-shield-check text-primary display-6 mb-2"></i>
+                                            <h6 class="card-title text-primary" id="averageStopLossPercent">0.0%</h6>
+                                            <p class="card-text text-muted small">Applied Stop Loss %</p>
                                         </div>
                                     </div>
                                 </div>
@@ -571,17 +572,20 @@
                                 <table class="table table-striped table-hover">
                                     <thead class="table-dark">
                                         <tr>
+                                            <th width="30"></th>
                                             <th>Symbol</th>
                                             <th>Type</th>
-                                            <th class="text-end">Quantity</th>
+                                            <th class="text-end">Peak/Current</th>
                                             <th class="text-end">Avg Price</th>
                                             <th class="text-end">Current Price</th>
                                             <th class="text-end">Stop Loss</th>
                                             <th class="text-end">Risk ($)</th>
                                             <th class="text-end">R-Multiple</th>
                                             <th class="text-end">SBE</th>
-                                            <th class="text-end">P&L ($)</th>
-                                            <th class="text-end">P&L (%)</th>
+                                            <th class="text-end">Realized P&L</th>
+                                            <th class="text-end">Unrealized P&L</th>
+                                            <th class="text-end">Remaining P&L (%)</th>
+                                            <th class="text-end">Overall P&L (%)</th>
                                             <th class="text-center">Actions</th>
                                         </tr>
                                     </thead>
@@ -775,6 +779,13 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeCharts();
     }, 100);
     
+    // Check if open positions tab is already active on page load
+    if (openPositionsTab && openPositionsTab.classList.contains('active')) {
+        loadTimePeriods();
+        loadOpenPositions();
+        startAutoRefresh();
+    }
+    
     // Stop Loss Modal Event Listeners
     const stopTypeRadios = document.querySelectorAll('input[name="stopType"]');
     stopTypeRadios.forEach(radio => {
@@ -791,10 +802,16 @@ document.addEventListener('DOMContentLoaded', function() {
         saveStopLossBtn.addEventListener('click', saveStopLoss);
     }
     
-    // Risk Ratio Application
-    const applyRiskRatioBtn = document.getElementById('applyRiskRatioBtn');
-    if (applyRiskRatioBtn) {
-        applyRiskRatioBtn.addEventListener('click', applyRiskRatio);
+    // Auto-apply risk ratio on dropdown changes
+    const timePeriodSelect = document.getElementById('timePeriodSelect');
+    const riskRatioSelect = document.getElementById('riskRatioSelect');
+    
+    if (timePeriodSelect) {
+        timePeriodSelect.addEventListener('change', autoApplyRiskRatio);
+    }
+    
+    if (riskRatioSelect) {
+        riskRatioSelect.addEventListener('change', autoApplyRiskRatio);
     }
 });
 
@@ -839,17 +856,27 @@ async function loadOpenPositions() {
     
     try {
         const response = await fetch(`/api/open-positions/${SESSION_ID}`);
-        const data = await response.json();
         
-        if (response.ok) {
-            displayOpenPositions(data);
-            updateLastUpdated();
-        } else {
-            showError(data.detail || 'Failed to load open positions');
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error:', response.status, errorText);
+            try {
+                const errorData = JSON.parse(errorText);
+                showError(errorData.detail || 'Failed to load open positions');
+            } catch {
+                showError(`Server error: ${response.status} - ${errorText}`);
+            }
+            return;
         }
+        
+        const data = await response.json();
+        console.log('Open positions loaded:', data);
+        displayOpenPositions(data);
+        updateLastUpdated();
+        
     } catch (error) {
         console.error('Error loading open positions:', error);
-        showError('Network error loading open positions');
+        showError('Network error loading open positions: ' + error.message);
     }
 }
 
@@ -867,7 +894,7 @@ async function refreshPrices() {
         const data = await response.json();
         
         if (response.ok) {
-            displayOpenPositions(data);
+            updatePositionsWithFreshData(data);
             updateLastUpdated();
         } else {
             showError(data.detail || 'Failed to refresh prices');
@@ -941,24 +968,20 @@ function updateSummaryCards(summary) {
     const triggeredStops = summary.triggered_stops_count || 0;
     document.getElementById('triggeredStopsCount').textContent = triggeredStops;
     
-    // Average R-Multiple
-    const avgRMultiple = summary.average_r_multiple || 0;
-    const avgRElement = document.getElementById('averageRMultiple');
-    const rText = `${avgRMultiple.toFixed(2)}R`;
-    
-    avgRElement.textContent = rText;
-    if (avgRMultiple >= 1) {
-        avgRElement.className = 'card-title text-success';
-    } else if (avgRMultiple >= 0) {
-        avgRElement.className = 'card-title text-warning';
-    } else {
-        avgRElement.className = 'card-title text-danger';
-    }
+    // Average Stop Loss Percentage
+    const avgStopLossPercent = summary.average_stop_loss_percentage || 0;
+    const avgStopLossElement = document.getElementById('averageStopLossPercent');
+    avgStopLossElement.textContent = `${avgStopLossPercent.toFixed(1)}%`;
+    avgStopLossElement.className = 'card-title text-primary';
 }
 
 function updatePositionsTable(positions) {
     const tbody = document.getElementById('openPositionsTableBody');
     tbody.innerHTML = '';
+    
+    // Check if a risk ratio is currently applied (not individual)
+    const riskRatioSelect = document.getElementById('riskRatioSelect');
+    const isRiskRatioApplied = riskRatioSelect && riskRatioSelect.value !== 'none';
     
     positions.forEach(position => {
         const row = document.createElement('tr');
@@ -966,7 +989,7 @@ function updatePositionsTable(positions) {
         const pnlDollar = position.unrealized_pnl;
         const pnlPercent = position.unrealized_pnl_pct;
         const pnlClass = (pnlDollar >= 0) ? 'text-success' : 'text-danger';
-        const currentPriceDisplay = position.current_price ? `$${position.current_price.toFixed(4)}` : 'N/A';
+        const currentPriceDisplay = position.current_price !== null && position.current_price !== undefined ? `$${position.current_price.toFixed(4)}` : 'N/A';
         
         // Stop loss and risk information
         const stopLoss = position.stop_loss;
@@ -975,9 +998,25 @@ function updatePositionsTable(positions) {
         let stopLossDisplay = 'Not Set';
         let riskDisplay = '-';
         let rMultipleDisplay = '-';
-        let actionsHtml = `<button class="btn btn-sm btn-outline-primary" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Set Stop</button>`;
+        // Actions depend on whether risk ratio is applied automatically or individual management
+        let actionsHtml = '';
         
-        if (stopLoss) {
+        if (isRiskRatioApplied) {
+            // When risk ratio is applied, don't show manual stop loss controls
+            actionsHtml = '<span class="text-muted small">Auto-managed</span>';
+        } else {
+            // Individual management - show manual controls
+            if (stopLoss) {
+                actionsHtml = `
+                    <button class="btn btn-sm btn-outline-danger" onclick="removeStopLoss('${position.symbol}')">Remove</button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Edit</button>
+                `;
+            } else {
+                actionsHtml = `<button class="btn btn-sm btn-outline-primary" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Set Stop</button>`;
+            }
+        }
+        
+        if (stopLoss && stopLoss.price !== null && stopLoss.price !== undefined) {
             stopLossDisplay = `$${stopLoss.price.toFixed(4)}`;
             riskDisplay = formatCurrency(stopLoss.risk_amount);
             
@@ -985,11 +1024,6 @@ function updatePositionsTable(positions) {
                 stopLossDisplay += ' <span class="badge bg-danger ms-1">TRIGGERED</span>';
                 row.classList.add('table-danger'); // Red background for triggered stops
             }
-            
-            actionsHtml = `
-                <button class="btn btn-sm btn-outline-danger" onclick="removeStopLoss('${position.symbol}')">Remove</button>
-                <button class="btn btn-sm btn-outline-secondary ms-1" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Edit</button>
-            `;
         }
         
         if (rMultiple !== null && rMultiple !== undefined) {
@@ -1022,7 +1056,7 @@ function updatePositionsTable(positions) {
         if (position.unrealized_pnl !== null && position.unrealized_pnl <= 0) {
             // Position is at a loss or breakeven - no SBE calculation needed
             sbeDisplay = '<span class="text-muted">-</span>';
-        } else if (position.current_price && position.current_price > 0 && position.cost_basis) {
+        } else if (position.current_price !== null && position.current_price !== undefined && position.current_price > 0 && position.cost_basis) {
             // Position is profitable - calculate SBE
             const sharesToSell = Math.round(position.cost_basis / position.current_price);
             const sbePercentage = (sharesToSell / position.quantity) * 100;
@@ -1055,31 +1089,390 @@ function updatePositionsTable(positions) {
             sbeDisplay = '<span class="text-muted">-</span>';
         }
         
+        // Peak/Current display
+        const peakCurrentDisplay = position.high_water_mark ? `
+            <span title="Peak position: ${position.high_water_mark} shares, Currently own: ${position.quantity} shares" 
+                  class="${position.quantity === position.high_water_mark ? 'text-success fw-bold' : 'text-muted'}">
+                ${position.high_water_mark}/${position.quantity}
+            </span>
+        ` : `${position.quantity}`;
+
+        // Realized P&L display
+        const realizedPnlDisplay = position.realized_pnl !== undefined ? 
+            `<span class="${position.realized_pnl >= 0 ? 'text-success' : 'text-danger'}">
+                ${formatCurrency(position.realized_pnl)}
+            </span>` : '-';
+
+        // Remaining P&L % display (percentage return on current position)
+        const remainingPnlClass = position.unrealized_pnl_pct >= 0 ? 'text-success' : 'text-danger';
+        const remainingPnlDisplay = position.unrealized_pnl_pct !== null ? `
+            <span class="${remainingPnlClass}" 
+                  title="Percentage return on current ${position.quantity} shares held">
+                ${position.unrealized_pnl_pct.toFixed(2)}%
+            </span>
+        ` : 'N/A';
+
+        // Overall P&L % display (total return including realized gains)
+        const overallPnlClass = position.total_pnl_pct >= 0 ? 'text-success' : 'text-danger';
+        const overallPnlDisplay = position.total_pnl_pct !== null ? `
+            <span class="${overallPnlClass} fw-bold" 
+                  title="Overall return including ${formatCurrency(position.realized_pnl || 0)} realized and ${formatCurrency(position.unrealized_pnl || 0)} unrealized">
+                ${position.total_pnl_pct.toFixed(2)}%
+            </span>
+        ` : 'N/A';
+
         row.innerHTML = `
+            <td class="text-center">
+                <i class="bi bi-chevron-right expand-arrow" 
+                   data-symbol="${position.symbol}" 
+                   style="cursor: pointer;"
+                   title="Click to view trade details"></i>
+            </td>
             <td><strong>${position.symbol}</strong></td>
             <td>
                 <span class="badge ${position.position_type === 'Long' ? 'bg-success' : 'bg-warning text-dark'}">
                     ${position.position_type}
                 </span>
             </td>
-            <td class="text-end">${position.quantity.toLocaleString()}</td>
-            <td class="text-end">$${position.avg_entry_price.toFixed(4)}</td>
+            <td class="text-end">${peakCurrentDisplay}</td>
+            <td class="text-end">${position.avg_entry_price !== null && position.avg_entry_price !== undefined ? `$${position.avg_entry_price.toFixed(4)}` : 'N/A'}</td>
             <td class="text-end">${currentPriceDisplay}</td>
             <td class="text-end">${stopLossDisplay}</td>
             <td class="text-end">${riskDisplay}</td>
             <td class="text-end">${rMultipleDisplay}</td>
             <td class="text-end">${sbeDisplay}</td>
+            <td class="text-end">${realizedPnlDisplay}</td>
             <td class="text-end ${pnlClass}">
                 ${pnlDollar !== null ? formatCurrency(pnlDollar) : 'N/A'}
             </td>
-            <td class="text-end ${pnlClass}">
-                ${pnlPercent !== null ? formatPercentage(pnlPercent) : 'N/A'}
-            </td>
+            <td class="text-end">${remainingPnlDisplay}</td>
+            <td class="text-end">${overallPnlDisplay}</td>
             <td class="text-center">${actionsHtml}</td>
         `;
         
         tbody.appendChild(row);
+        
+        // Create and append detail row (initially hidden)
+        const detailRow = createDetailRow(position);
+        tbody.appendChild(detailRow);
     });
+    
+    // Add click event listeners for expand/collapse arrows
+    addExpandCollapseListeners();
+}
+
+function createDetailRow(position) {
+    const detailRow = document.createElement('tr');
+    detailRow.className = 'trade-detail-row d-none';
+    detailRow.id = `detail-${position.symbol}`;
+    
+    // Create detail cell that spans all columns
+    const detailCell = document.createElement('td');
+    detailCell.colSpan = 15; // Span all columns in the table (added one more column)
+    detailCell.className = 'p-0';
+    
+    // Build detailed trade history content
+    let detailHTML = `
+        <div class="card border-0 m-2">
+            <div class="card-header bg-light">
+                <h6 class="mb-0">
+                    <i class="bi bi-list-ul me-2"></i>
+                    Trade History for ${position.symbol}
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Position Summary:</strong>
+                        <ul class="list-unstyled mt-2">
+                            <li><strong>Peak Position:</strong> ${position.high_water_mark !== null && position.high_water_mark !== undefined ? position.high_water_mark.toLocaleString() : 'N/A'} shares</li>
+                            <li><strong>Current Position:</strong> ${position.quantity !== null && position.quantity !== undefined ? position.quantity.toLocaleString() : 'N/A'} shares</li>
+                            <li><strong>Total Lots:</strong> ${position.lots ? position.lots.length : 0}</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>P&L Breakdown:</strong>
+                        <ul class="list-unstyled mt-2">
+                            <li><strong>Realized P&L:</strong> ${formatCurrency(position.realized_pnl || 0)}</li>
+                            <li><strong>Unrealized P&L:</strong> ${position.unrealized_pnl !== null ? formatCurrency(position.unrealized_pnl) : 'N/A'}</li>
+                            <li><strong>Total P&L:</strong> ${position.total_pnl !== null ? formatCurrency(position.total_pnl) : 'N/A'}</li>
+                        </ul>
+                    </div>
+                </div>`;
+    
+    // Add individual lots table if available
+    if (position.lots && position.lots.length > 0) {
+        detailHTML += `
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Entry Date</th>
+                                <th class="text-end">Original Qty</th>
+                                <th class="text-end">Remaining Qty</th>
+                                <th class="text-end">Entry Price</th>
+                                <th class="text-end">Cost Basis</th>
+                                <th class="text-end">Commission</th>
+                                <th class="text-end">Market Value</th>
+                                <th class="text-end">P&L ($)</th>
+                                <th class="text-end">P&L (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+        
+        position.lots.forEach(lot => {
+            const currentValue = position.current_price ? (lot.quantity_remaining * position.current_price) : null;
+            const lotPnl = currentValue ? (currentValue - lot.cost_basis) : null;
+            const lotPnlPercent = (lotPnl !== null && lot.cost_basis > 0) ? ((lotPnl / lot.cost_basis) * 100) : null;
+            const pnlClass = lotPnl !== null ? (lotPnl >= 0 ? 'text-success' : 'text-danger') : '';
+            
+            detailHTML += `
+                            <tr>
+                                <td>${lot.entry_date}</td>
+                                <td class="text-end">${lot.original_quantity !== null && lot.original_quantity !== undefined ? lot.original_quantity.toLocaleString() : 'N/A'}</td>
+                                <td class="text-end">${lot.quantity_remaining !== null && lot.quantity_remaining !== undefined ? lot.quantity_remaining.toLocaleString() : 'N/A'}</td>
+                                <td class="text-end">${lot.entry_price !== null && lot.entry_price !== undefined ? `$${lot.entry_price.toFixed(4)}` : 'N/A'}</td>
+                                <td class="text-end">${formatCurrency(lot.cost_basis)}</td>
+                                <td class="text-end">${formatCurrency(lot.commission)}</td>
+                                <td class="text-end">${currentValue !== null ? formatCurrency(currentValue) : 'N/A'}</td>
+                                <td class="text-end ${pnlClass}">${lotPnl !== null ? formatCurrency(lotPnl) : 'N/A'}</td>
+                                <td class="text-end ${pnlClass}">${lotPnlPercent !== null ? lotPnlPercent.toFixed(2) + '%' : 'N/A'}</td>
+                            </tr>`;
+        });
+        
+        detailHTML += `
+                        </tbody>
+                    </table>
+                </div>`;
+    } else {
+        detailHTML += `
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    No detailed lot information available for this position.
+                </div>`;
+    }
+    
+    // Add partial sales section placeholder
+    detailHTML += `
+                <div class="mt-3">
+                    <h6>Partial Sales History</h6>
+                    <div class="alert alert-secondary">
+                        <i class="bi bi-clock me-2"></i>
+                        Partial sales tracking coming soon. This will show realized P&L from partial position sales.
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    
+    detailCell.innerHTML = detailHTML;
+    detailRow.appendChild(detailCell);
+    
+    return detailRow;
+}
+
+function addExpandCollapseListeners() {
+    // Use event delegation on the table to avoid duplicate listeners
+    const positionsTable = document.getElementById('openPositionsTable');
+    if (!positionsTable || positionsTable.hasAttribute('data-listeners-added')) {
+        return; // Already has listeners or table not found
+    }
+    
+    // Mark that we've added listeners to prevent duplicates
+    positionsTable.setAttribute('data-listeners-added', 'true');
+    
+    positionsTable.addEventListener('click', function(event) {
+        // Check if the clicked element is an expand arrow
+        if (event.target.classList.contains('expand-arrow')) {
+            const arrow = event.target;
+            const symbol = arrow.getAttribute('data-symbol');
+            const detailRow = document.getElementById(`detail-${symbol}`);
+            
+            if (detailRow) {
+                const isExpanded = !detailRow.classList.contains('d-none');
+                
+                if (isExpanded) {
+                    // Collapse
+                    detailRow.classList.add('d-none');
+                    arrow.classList.remove('bi-chevron-down');
+                    arrow.classList.add('bi-chevron-right');
+                    arrow.title = 'Click to view trade details';
+                } else {
+                    // Expand
+                    detailRow.classList.remove('d-none');
+                    arrow.classList.remove('bi-chevron-right');
+                    arrow.classList.add('bi-chevron-down');
+                    arrow.title = 'Click to hide trade details';
+                }
+            }
+        }
+    });
+}
+
+function updatePositionsWithFreshData(data) {
+    // Update summary cards first
+    updateSummaryCards(data.summary);
+    
+    // Check if risk ratio is applied for actions logic
+    const riskRatioSelect = document.getElementById('riskRatioSelect');
+    const isRiskRatioApplied = riskRatioSelect && riskRatioSelect.value !== 'none';
+    
+    // Store current expand/collapse states
+    const expandStates = {};
+    const expandArrows = document.querySelectorAll('.expand-arrow');
+    expandArrows.forEach(arrow => {
+        const symbol = arrow.getAttribute('data-symbol');
+        const detailRow = document.getElementById(`detail-${symbol}`);
+        if (detailRow) {
+            expandStates[symbol] = !detailRow.classList.contains('d-none');
+        }
+    });
+    
+    // Update each position row with fresh data
+    const positions = data.positions;
+    
+    positions.forEach(position => {
+        const symbol = position.symbol;
+        
+        // Find the existing row
+        const existingRows = document.querySelectorAll(`tr:not(.trade-detail-row)`);
+        let targetRow = null;
+        
+        existingRows.forEach(row => {
+            const symbolCell = row.querySelector('td:nth-child(2) strong');
+            if (symbolCell && symbolCell.textContent === symbol) {
+                targetRow = row;
+            }
+        });
+        
+        if (!targetRow) return; // Skip if row not found
+        
+        // Update price-dependent cells only
+        const cells = targetRow.querySelectorAll('td');
+        
+        // Current Price (index 5)
+        const currentPriceDisplay = position.current_price !== null && position.current_price !== undefined 
+            ? `$${position.current_price.toFixed(4)}` 
+            : '<span class="text-muted">Loading...</span>';
+        cells[5].innerHTML = currentPriceDisplay;
+        
+        // Stop Loss (index 6)
+        const positionStopLoss = position.stop_loss;
+        let stopLossDisplay = '<span class="text-muted">Not Set</span>';
+        if (positionStopLoss && positionStopLoss.price !== undefined && positionStopLoss.price !== null) {
+            stopLossDisplay = `$${positionStopLoss.price.toFixed(4)}`;
+            if (positionStopLoss.is_triggered) {
+                stopLossDisplay += ' <span class="badge bg-danger ms-1">TRIGGERED</span>';
+            }
+        }
+        cells[6].className = 'text-end';
+        cells[6].innerHTML = stopLossDisplay;
+        
+        // Risk (index 7)
+        let riskDisplay = '<span class="text-muted">-</span>';
+        if (positionStopLoss && positionStopLoss.risk_amount !== undefined && positionStopLoss.risk_amount !== null) {
+            riskDisplay = formatCurrency(positionStopLoss.risk_amount);
+        }
+        cells[7].className = 'text-end';
+        cells[7].innerHTML = riskDisplay;
+        
+        // R-Multiple (index 8)
+        const rMultiple = position.r_multiple;
+        const rMultipleDisplay = rMultiple !== null && rMultiple !== undefined 
+            ? `<span class="${rMultiple >= 0 ? 'text-success' : 'text-danger'}">${rMultiple.toFixed(2)}R</span>`
+            : '<span class="text-muted">-</span>';
+        cells[8].innerHTML = rMultipleDisplay;
+        
+        // SBE (index 9) - recalculate based on fresh price
+        let sbeDisplay = '<span class="text-muted">-</span>';
+        if (position.current_price !== null && position.current_price !== undefined && position.current_price > 0 && position.cost_basis) {
+            const sharesToSell = Math.round(position.cost_basis / position.current_price);
+            
+            // Only show for profitable positions
+            if (position.unrealized_pnl !== null && position.unrealized_pnl > 0) {
+                if (sharesToSell > 0 && sharesToSell < position.quantity) {
+                    sbeDisplay = `<span class="text-success fw-bold">${sharesToSell !== null && sharesToSell !== undefined && !isNaN(sharesToSell) ? sharesToSell.toLocaleString() : 'N/A'}</span>`;
+                    // Add green highlighting for profitable positions
+                    if (!targetRow.classList.contains('table-danger')) {
+                        targetRow.classList.add('table-success');
+                    }
+                } else if (sharesToSell >= position.quantity) {
+                    sbeDisplay = `<span class="text-warning" title="Current price $${position.current_price.toFixed(4)} requires selling all ${position.quantity} shares to break even.">All</span>`;
+                } else {
+                    sbeDisplay = '<span class="text-success">0</span>';
+                }
+            } else {
+                sbeDisplay = '<span class="text-muted">-</span>';
+            }
+        }
+        cells[9].innerHTML = sbeDisplay;
+        
+        // Unrealized P&L (index 11)
+        const pnlDollar = position.unrealized_pnl;
+        const pnlClass = pnlDollar !== null ? (pnlDollar >= 0 ? 'text-success' : 'text-danger') : '';
+        cells[11].className = `text-end ${pnlClass}`;
+        cells[11].innerHTML = pnlDollar !== null ? formatCurrency(pnlDollar) : 'N/A';
+        
+        // Remaining P&L % (index 12)
+        const remainingPnlDisplay = position.unrealized_pnl_pct !== null && position.unrealized_pnl_pct !== undefined ? 
+            `<span class="${position.unrealized_pnl_pct >= 0 ? 'text-success' : 'text-danger'}">
+                ${formatPercentage(position.unrealized_pnl_pct)}
+            </span>` : 'N/A';
+        cells[12].innerHTML = remainingPnlDisplay;
+        
+        // Overall P&L % (index 13)
+        const overallPnlDisplay = position.total_pnl_pct !== null && position.total_pnl_pct !== undefined ? 
+            `<span class="${position.total_pnl_pct >= 0 ? 'text-success' : 'text-danger'}">
+                ${formatPercentage(position.total_pnl_pct)}
+            </span>` : 'N/A';
+        cells[13].innerHTML = overallPnlDisplay;
+        
+        // Actions column (index 14) - update based on risk ratio state
+        let actionsHtml = '';
+        const positionStopLossInfo = position.stop_loss;
+        
+        if (isRiskRatioApplied) {
+            // When risk ratio is applied, show auto-managed
+            actionsHtml = '<span class="text-muted small">Auto-managed</span>';
+        } else {
+            // Individual management - show manual controls
+            if (positionStopLossInfo) {
+                actionsHtml = `
+                    <button class="btn btn-sm btn-outline-danger" onclick="removeStopLoss('${position.symbol}')">Remove</button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Edit</button>
+                `;
+            } else {
+                actionsHtml = `<button class="btn btn-sm btn-outline-primary" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Set Stop</button>`;
+            }
+        }
+        cells[14].innerHTML = actionsHtml;
+        
+        // Update the detail row if it exists and is expanded
+        const detailRow = document.getElementById(`detail-${symbol}`);
+        if (detailRow) {
+            // Remove the old detail row
+            detailRow.remove();
+            
+            // Create new detail row with fresh data
+            const newDetailRow = createDetailRow(position);
+            
+            // Insert after the main row
+            targetRow.parentNode.insertBefore(newDetailRow, targetRow.nextSibling);
+            
+            // Restore expand state if it was expanded
+            if (expandStates[symbol]) {
+                newDetailRow.classList.remove('d-none');
+                const arrow = targetRow.querySelector('.expand-arrow');
+                if (arrow) {
+                    arrow.classList.remove('bi-chevron-right');
+                    arrow.classList.add('bi-chevron-down');
+                    arrow.title = 'Click to hide trade details';
+                }
+            }
+        }
+    });
+    
+    // Re-add event listeners for any new elements
+    addExpandCollapseListeners();
 }
 
 function showLoadingState() {
@@ -1120,7 +1513,7 @@ function updateLastUpdated() {
 function startAutoRefresh() {
     // Refresh every 30 seconds during market hours
     autoRefreshInterval = setInterval(() => {
-        loadOpenPositions();
+        refreshPrices();
     }, 30000);
 }
 
@@ -1298,7 +1691,7 @@ async function saveStopLoss() {
             modal.hide();
             
             // Refresh positions to show updated stop loss
-            await loadOpenPositions();
+            await refreshPrices();
             
             // Show success message
             showNotification('success', `Stop loss set for ${currentPosition.symbol}`);
@@ -1329,7 +1722,7 @@ async function removeStopLoss(symbol) {
         
         if (response.ok) {
             // Refresh positions
-            await loadOpenPositions();
+            await refreshPrices();
             showNotification('success', `Stop loss removed for ${symbol}`);
         } else {
             throw new Error(result.detail || 'Failed to remove stop loss');
@@ -1364,43 +1757,23 @@ function showNotification(type, message) {
     }, 5000);
 }
 
-async function applyRiskRatio() {
+async function autoApplyRiskRatio() {
     const riskRatioSelect = document.getElementById('riskRatioSelect');
     const timePeriodSelect = document.getElementById('timePeriodSelect');
     const selectedRatio = riskRatioSelect.value;
     const selectedPeriod = timePeriodSelect.value;
     
-    if (!selectedRatio) {
-        showNotification('error', 'Please select a risk ratio');
-        return;
+    if (!selectedRatio || !selectedPeriod) {
+        return; // Don't show error for auto-apply, just skip
     }
     
-    if (!selectedPeriod) {
-        showNotification('error', 'Please select a time period');
-        return;
-    }
-    
-    // Get the period display text for confirmation
-    const periodText = timePeriodSelect.options[timePeriodSelect.selectedIndex].text;
-    
-    let confirmMessage;
-    if (selectedRatio === 'none') {
-        confirmMessage = 'This will remove all existing stop losses. Continue?';
-    } else {
-        confirmMessage = `Apply ${selectedRatio} risk ratio to all open positions based on ${periodText}? This will set stop losses and may override existing stop losses.`;
-    }
-    
-    if (!confirm(confirmMessage)) {
-        return;
-    }
-    
-    const applyBtn = document.getElementById('applyRiskRatioBtn');
-    const originalText = applyBtn.innerHTML;
+    // Add loading states to dropdowns
+    riskRatioSelect.disabled = true;
+    timePeriodSelect.disabled = true;
+    riskRatioSelect.classList.add('loading');
+    timePeriodSelect.classList.add('loading');
     
     try {
-        applyBtn.disabled = true;
-        applyBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Applying...';
-        
         const response = await fetch(`/api/apply-risk-ratio/${SESSION_ID}`, {
             method: 'POST',
             headers: {
@@ -1415,8 +1788,16 @@ async function applyRiskRatio() {
         const result = await response.json();
         
         if (response.ok) {
-            // Refresh positions to show updated stop losses
-            await loadOpenPositions();
+            // Refresh positions to show updated stop losses (use faster endpoint)
+            const positionsResponse = await fetch(`/api/open-positions/${SESSION_ID}`);
+            if (positionsResponse.ok) {
+                const positionsData = await positionsResponse.json();
+                updatePositionsWithFreshData(positionsData);
+                updateLastUpdated();
+            } else {
+                // Fallback to full refresh if fast update fails
+                await refreshPrices();
+            }
             
             // Show detailed success message
             showNotification('success', result.message);
@@ -1435,8 +1816,11 @@ async function applyRiskRatio() {
         console.error('Error applying risk ratio:', error);
         showNotification('error', `Error applying risk ratio: ${error.message}`);
     } finally {
-        applyBtn.disabled = false;
-        applyBtn.innerHTML = originalText;
+        // Remove loading states from dropdowns
+        riskRatioSelect.disabled = false;
+        timePeriodSelect.disabled = false;
+        riskRatioSelect.classList.remove('loading');
+        timePeriodSelect.classList.remove('loading');
     }
 }
 </script>

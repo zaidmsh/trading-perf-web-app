@@ -1,6 +1,7 @@
 """
 Trading Performance Analyzer - Web Application
 FastAPI backend with file upload and results display
+Updated: 2025-01-10 - Fixed JSON serialization and position loading
 """
 
 import os
@@ -172,6 +173,107 @@ def get_available_time_periods(performance_data: Dict[str, Any]) -> List[Dict[st
                     })
     
     return periods
+
+
+def calculate_individual_stop_loss_percentage(position: Dict[str, Any], risk_ratio: str, average_gain: float) -> float:
+    """
+    Calculate individual stop loss percentage for a position accounting for partial sales
+    
+    Args:
+        position: Position dictionary with entry price, quantity, realized P&L, etc.
+        risk_ratio: Risk ratio string (e.g., "2:1", "3:1")
+        average_gain: Average gain percentage for the period
+        
+    Returns:
+        Stop loss percentage for this specific position
+    """
+    if average_gain <= 0:
+        raise ValueError("Average gain must be positive")
+    
+    # Parse risk ratio
+    try:
+        risk_part, reward_part = risk_ratio.split(":")
+        risk_multiple = float(risk_part)
+        # reward_multiple = float(reward_part)  # Not used in current calculation
+    except (ValueError, AttributeError):
+        raise ValueError(f"Invalid risk ratio format: {risk_ratio}")
+    
+    if risk_multiple <= 0:
+        raise ValueError("Risk multiple must be positive")
+    
+    # Base stop loss calculation: For a 3:1 ratio, risk 1 unit to gain 3 units
+    # So stop loss = average_gain / risk_ratio
+    base_stop_loss_percentage = average_gain / risk_multiple
+    
+    # Get position details
+    total_cost_basis = position.get("total_cost_basis", position.get("cost_basis", 0))
+    current_cost_basis = position.get("cost_basis", 0)
+    realized_pnl = position.get("realized_pnl", 0.0)
+    
+    # If no partial sales or profits realized, use base calculation
+    if realized_pnl <= 0 or total_cost_basis <= 0 or current_cost_basis <= 0:
+        return base_stop_loss_percentage
+    
+    # Calculate risk adjustment factor based on realized profits
+    # If we've made profits from partial sales, we can afford more risk on remaining shares
+    realized_profit_ratio = max(0, realized_pnl) / total_cost_basis
+    
+    # Adjust stop loss: reduce risk by the proportion of profits already realized
+    # This allows for a more aggressive stop loss since we've already secured some gains
+    risk_reduction_factor = min(realized_profit_ratio, 0.5)  # Cap at 50% reduction
+    adjusted_stop_loss_percentage = base_stop_loss_percentage * (1 + risk_reduction_factor)
+    
+    # Ensure stop loss doesn't exceed reasonable limits (max 15%)
+    adjusted_stop_loss_percentage = min(adjusted_stop_loss_percentage, 15.0)
+    
+    return round(adjusted_stop_loss_percentage, 2)
+
+
+def ensure_json_serializable(data):
+    """
+    Recursively convert data to ensure JSON serialization compatibility
+    
+    Handles:
+    - numpy bool_ to Python bool
+    - numpy numeric types to Python numeric types
+    - nested dictionaries and lists
+    """
+    try:
+        import numpy as np
+        has_numpy = True
+    except ImportError:
+        has_numpy = False
+    
+    if isinstance(data, dict):
+        return {key: ensure_json_serializable(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [ensure_json_serializable(item) for item in data]
+    elif data is None:
+        return None
+    elif isinstance(data, (int, float, str, bool)):
+        return data
+    elif has_numpy:
+        if isinstance(data, np.bool_):
+            return bool(data)
+        elif isinstance(data, (np.integer, np.floating)):
+            return float(data) if isinstance(data, np.floating) else int(data)
+        elif hasattr(data, 'item'):  # For numpy scalar types
+            return data.item()
+    # Handle pandas types without importing pandas
+    elif type(data).__module__ == 'numpy' or 'numpy' in str(type(data)):
+        # Convert any numpy-like type to Python native
+        if hasattr(data, 'item'):
+            return data.item()
+        else:
+            return float(data) if 'float' in str(type(data)) else int(data)
+    # Handle Decimal types
+    elif hasattr(data, '__float__'):
+        return float(data)
+    elif hasattr(data, '__int__'):
+        return int(data)
+    else:
+        # Return as-is for unhandled types
+        return data
 
 
 # Pydantic models for request bodies
@@ -636,12 +738,14 @@ async def hybrid_analyze(
 async def get_open_positions(session_id: str):
     """Get open positions with current prices"""
     if session_id not in results_store:
-        raise HTTPException(status_code=404, detail="Results not found")
+        raise HTTPException(status_code=404, detail="Session data not found. Please re-upload your data - the session may have expired or the server was restarted.")
 
     try:
         # Get stored open positions data
         stored_data = results_store[session_id]
         open_positions_data = stored_data.get("open_positions", {"positions": [], "summary": {}})
+        
+        logger.info(f"Getting open positions for session {session_id}: {len(open_positions_data.get('positions', []))} positions found")
         
         if not open_positions_data["positions"]:
             return JSONResponse({
@@ -737,21 +841,29 @@ async def get_open_positions(session_id: str):
         active_stops = sum(1 for pos in updated_positions if pos.get("stop_loss") and not pos["stop_loss"].get("is_triggered", False))
         triggered_stops = sum(1 for pos in updated_positions if pos.get("stop_loss") and pos["stop_loss"].get("is_triggered", False))
         
-        # Calculate average R-Multiple
-        r_multiples = [pos["r_multiple"] for pos in updated_positions if pos.get("r_multiple") is not None]
-        avg_r_multiple = sum(r_multiples) / len(r_multiples) if r_multiples else 0
+        # Calculate average stop loss percentage
+        stop_loss_percentages = [pos.get("stop_loss", {}).get("risk_percentage", 0) for pos in updated_positions if pos.get("stop_loss")]
+        avg_stop_loss_percentage = sum(stop_loss_percentages) / len(stop_loss_percentages) if stop_loss_percentages else 0
         
         updated_summary.update({
             "total_risk_exposure": total_risk,
             "active_stops_count": active_stops,
             "triggered_stops_count": triggered_stops,
-            "average_r_multiple": avg_r_multiple
+            "average_stop_loss_percentage": avg_stop_loss_percentage
         })
         
-        return JSONResponse({
-            "positions": updated_positions,
-            "summary": updated_summary
-        })
+        # Ensure all data is JSON serializable
+        try:
+            response_data = ensure_json_serializable({
+                "positions": updated_positions,
+                "summary": updated_summary
+            })
+            # Successfully serialized response data
+            return JSONResponse(response_data)
+        except Exception as serialize_error:
+            logger.error(f"JSON serialization error: {serialize_error}")
+            logger.error(f"Problem with position data: {type(serialize_error)}")
+            raise HTTPException(status_code=500, detail=f"Data serialization error: {str(serialize_error)}")
 
     except Exception as e:
         logger.error(f"Error getting open positions for {session_id}: {e}")
@@ -904,8 +1016,8 @@ async def apply_risk_ratio(session_id: str, request: dict):
             raise HTTPException(status_code=400, detail="Invalid risk ratio format. Use format like '2:1'")
         
         try:
-            reward_multiple = float(ratio_parts[0])
-            risk_multiple = float(ratio_parts[1])
+            risk_multiple = float(ratio_parts[0])
+            # reward_multiple = float(ratio_parts[1])  # Not used in current calculation
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid risk ratio values. Must be numbers.")
         
@@ -919,7 +1031,8 @@ async def apply_risk_ratio(session_id: str, request: dict):
         
         # Calculate stop loss percentage based on risk ratio
         # If average gain is 6% and ratio is 2:1, stop loss should be 3%
-        stop_loss_percentage = (average_gain * risk_multiple) / reward_multiple
+        # For a 2:1 ratio, you risk 1 unit to gain 2 units
+        stop_loss_percentage = average_gain / risk_multiple
         
         # Get open positions
         open_positions_data = stored_data.get("open_positions", {"positions": []})
@@ -928,19 +1041,25 @@ async def apply_risk_ratio(session_id: str, request: dict):
         if not positions:
             raise HTTPException(status_code=400, detail="No open positions found")
         
-        # Apply stop loss to all positions
+        # Apply stop loss to all positions based on individual risk calculations
         applied_count = 0
         errors = []
         
         for position in positions:
             try:
+                # Calculate individual stop loss based on position-specific risk
+                individual_stop_loss_percentage = calculate_individual_stop_loss_percentage(
+                    position, risk_ratio, average_gain
+                )
+                
                 stop_loss = stop_loss_manager.set_stop_loss(
                     session_id, 
                     position, 
                     "percentage", 
-                    stop_loss_percentage
+                    individual_stop_loss_percentage
                 )
                 applied_count += 1
+                logger.info(f"Set stop loss for {position['symbol']}: {individual_stop_loss_percentage:.2f}% = ${stop_loss.stop_loss_price:.4f}, Risk: ${stop_loss.risk_amount:.2f}")
             except Exception as e:
                 errors.append(f"{position['symbol']}: {str(e)}")
         

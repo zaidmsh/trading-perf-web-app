@@ -98,7 +98,7 @@ class StopLossManager:
     
     def calculate_risk_metrics(self, position: Dict[str, Any], stop_loss_price: float) -> Tuple[float, float]:
         """
-        Calculate risk amount and risk percentage for a position
+        Calculate risk amount and risk percentage for a position, accounting for partial sales
         
         Args:
             position: Position dictionary with entry price, quantity, etc.
@@ -108,21 +108,34 @@ class StopLossManager:
             Tuple of (risk_amount, risk_percentage)
         """
         entry_price = position["avg_entry_price"]
-        quantity = position["quantity"]
+        current_quantity = position["quantity"]
         position_type = position["position_type"]
+        
+        # Get original and current cost basis
+        total_cost_basis = position.get("total_cost_basis", position.get("cost_basis", entry_price * current_quantity))
+        current_cost_basis = position.get("cost_basis", entry_price * current_quantity)
+        realized_pnl = position.get("realized_pnl", 0.0)
         
         if position_type.lower() == "long":
             risk_per_share = max(0, entry_price - stop_loss_price)
         else:  # short
             risk_per_share = max(0, stop_loss_price - entry_price)
         
-        risk_amount = risk_per_share * quantity
+        # Calculate original risk based on total cost basis and stop loss percentage
+        if current_cost_basis > 0:
+            stop_loss_percentage = (risk_per_share / entry_price) * 100
+            original_risk = total_cost_basis * (stop_loss_percentage / 100)
+        else:
+            original_risk = 0
         
-        # Risk percentage relative to position cost
-        cost_basis = position.get("cost_basis", entry_price * quantity)
-        risk_percentage = (risk_amount / cost_basis * 100) if cost_basis > 0 else 0
+        # Adjust risk by subtracting realized profits from partial sales
+        # If we made profits from selling shares, our remaining risk is reduced
+        adjusted_risk = max(0, original_risk - max(0, realized_pnl))
         
-        return risk_amount, risk_percentage
+        # Calculate risk percentage relative to remaining cost basis
+        risk_percentage = (adjusted_risk / current_cost_basis * 100) if current_cost_basis > 0 else 0
+        
+        return adjusted_risk, risk_percentage
     
     def set_stop_loss(self, session_id: str, position: Dict[str, Any], 
                      stop_type: str, stop_value: float) -> StopLoss:
@@ -233,10 +246,10 @@ class StopLossManager:
             
             if position_type.lower() == "long":
                 # Long position: triggered if current price <= stop price
-                is_triggered = current_price <= stop_loss.stop_loss_price
+                is_triggered = bool(current_price <= stop_loss.stop_loss_price)
             elif position_type.lower() == "short":
                 # Short position: triggered if current price >= stop price
-                is_triggered = current_price >= stop_loss.stop_loss_price
+                is_triggered = bool(current_price >= stop_loss.stop_loss_price)
             
             if is_triggered:
                 stop_loss.is_triggered = True
@@ -321,9 +334,9 @@ class StopLossManager:
                     # First determine if target is reached
                     target_reached = False
                     if position_type.lower() == "long":
-                        target_reached = current_price >= target_price
+                        target_reached = bool(current_price >= target_price)
                     else:  # short
-                        target_reached = current_price <= target_price
+                        target_reached = bool(current_price <= target_price)
                     
                     # SBE calculation: How many shares to sell at current price to recover cost basis
                     # This is the key calculation for freerolling the position
@@ -407,9 +420,9 @@ class StopLossManager:
                 # Calculate if current price has reached this target
                 target_reached = False
                 if position_type.lower() == "long":
-                    target_reached = current_price >= target_price
+                    target_reached = bool(current_price >= target_price)
                 else:  # short
-                    target_reached = current_price <= target_price
+                    target_reached = bool(current_price <= target_price)
                 
                 # SBE calculation: shares to sell to recover cost basis
                 if target_reached:
@@ -432,7 +445,7 @@ class StopLossManager:
                     remaining_cost = cost_basis - recovery_amount
                     stop_loss_value = shares_remaining * stop_loss.stop_loss_price
                     net_result = stop_loss_value - remaining_cost
-                    breakeven_protected = net_result >= -1  # Allow $1 tolerance for commissions
+                    breakeven_protected = bool(net_result >= -1)  # Allow $1 tolerance for commissions
                 else:
                     breakeven_protected = False
                 
