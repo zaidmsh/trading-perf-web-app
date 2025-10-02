@@ -1695,7 +1695,8 @@ function updatePositionsWithFreshData(data) {
         // Actions column (index 14) - update based on risk ratio state
         let actionsHtml = '';
         const positionStopLossInfo = position.stop_loss;
-        
+        const isManualTrade = position.portfolio === 'Manual';
+
         if (isRiskRatioApplied) {
             // When risk ratio is applied, show auto-managed
             actionsHtml = '<span class="text-muted small">Auto-managed</span>';
@@ -1710,6 +1711,16 @@ function updatePositionsWithFreshData(data) {
                 actionsHtml = `<button class="btn btn-sm btn-outline-primary" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Set Stop</button>`;
             }
         }
+
+        // Add remove button for manual trades
+        if (isManualTrade) {
+            actionsHtml += `
+                <button class="btn btn-sm btn-outline-danger ms-1" onclick="removeManualTrade('${position.symbol}', '${position.position_type}')" title="Remove manual trade">
+                    <i class="bi bi-trash"></i>
+                </button>
+            `;
+        }
+
         cells[14].innerHTML = actionsHtml;
         
         // Update the detail row if it exists and is expanded
@@ -1978,14 +1989,14 @@ async function removeStopLoss(symbol) {
     if (!confirm(`Remove stop loss for ${symbol}?`)) {
         return;
     }
-    
+
     try {
         const response = await fetch(`/api/remove-stop-loss/${SESSION_ID}/${symbol}`, {
             method: 'DELETE'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             // Refresh positions
             await refreshPrices();
@@ -1993,10 +2004,36 @@ async function removeStopLoss(symbol) {
         } else {
             throw new Error(result.detail || 'Failed to remove stop loss');
         }
-        
+
     } catch (error) {
         console.error('Error removing stop loss:', error);
         showNotification('error', `Error removing stop loss: ${error.message}`);
+    }
+}
+
+async function removeManualTrade(symbol, positionType) {
+    if (!confirm(`Remove manual trade for ${symbol}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/manual-trade/${SESSION_ID}/${symbol}/${positionType}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            // Refresh positions
+            await loadOpenPositions();
+            showNotification('success', `Manual trade removed: ${symbol}`);
+        } else {
+            throw new Error(result.detail || 'Failed to remove manual trade');
+        }
+
+    } catch (error) {
+        console.error('Error removing manual trade:', error);
+        showNotification('error', `Error removing manual trade: ${error.message}`);
     }
 }
 

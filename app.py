@@ -595,6 +595,64 @@ async def add_manual_trade(session_id: str, trade: ManualTradeInput):
         raise HTTPException(status_code=500, detail=f"Failed to add manual trade: {str(e)}")
 
 
+@app.delete("/api/manual-trade/{session_id}/{symbol}/{position_type}")
+async def remove_manual_trade(session_id: str, symbol: str, position_type: str):
+    """Remove a manually added trade from open positions"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        from core.open_positions import calculate_portfolio_summary
+
+        # Get session data
+        data = results_store[session_id]
+        open_positions_data = data.get("open_positions", {"positions": [], "summary": {}})
+        positions = open_positions_data.get("positions", [])
+
+        # Find and remove the manual trade position
+        position_found = False
+        updated_positions = []
+
+        for pos in positions:
+            # Match by symbol, position type, and portfolio = "Manual"
+            if (pos["symbol"] == symbol and
+                pos["position_type"] == position_type and
+                pos.get("portfolio") == "Manual"):
+                position_found = True
+                logger.info(f"Removing manual trade: {symbol} ({position_type})")
+                # Skip this position (don't add to updated list)
+                continue
+            updated_positions.append(pos)
+
+        if not position_found:
+            raise HTTPException(status_code=404, detail=f"Manual trade not found: {symbol}")
+
+        # Recalculate summary with remaining positions
+        summary = calculate_portfolio_summary(updated_positions)
+
+        # Update stored data
+        open_positions_data["positions"] = updated_positions
+        open_positions_data["summary"] = summary
+        data["open_positions"] = open_positions_data
+
+        # Also remove any associated stop loss
+        from core.stop_loss_manager import stop_loss_manager
+        stop_loss_manager.remove_stop_loss(session_id, symbol)
+
+        return JSONResponse({
+            "success": True,
+            "message": f"Manual trade removed: {symbol}",
+            "positions": ensure_json_serializable(updated_positions),
+            "summary": ensure_json_serializable(summary)
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing manual trade: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to remove manual trade: {str(e)}")
+
+
 @app.post("/api/test-ibkr")
 async def test_ibkr_connection(request: IBKRRequest):
     """Test IBKR FlexQuery connection"""
