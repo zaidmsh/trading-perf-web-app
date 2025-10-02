@@ -141,6 +141,15 @@
     font-weight: 600;
 }
 
+/* Override for primary colored headers */
+.card-header[style*="background-color"] {
+    background: none !important;
+}
+
+.card-header[style*="background-color"] * {
+    color: inherit !important;
+}
+
 /* Navigation Enhancements */
 .navbar-brand {
     font-weight: 700;

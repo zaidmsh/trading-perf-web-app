@@ -2,6 +2,67 @@
 
 {% block title %}Upload IBKR CSV - Trading Performance Analyzer{% endblock %}
 
+{% block extra_styles %}
+<style>
+/* Fix card header visibility - darker blue background for better contrast */
+.card-header.bg-primary {
+    background-color: #0a58ca !important; /* Darker blue */
+    color: #ffffff !important;
+}
+
+.card-header.bg-primary .card-title,
+.card-header.bg-primary h5,
+.card-header.bg-primary i {
+    color: #ffffff !important;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2); /* Add subtle shadow for better readability */
+}
+
+.result-item {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #0d6efd;
+    transition: all 0.3s ease;
+}
+
+.result-item:hover {
+    background: #e9ecef;
+    transform: translateX(3px);
+}
+
+.result-item small {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.btn-group label {
+    white-space: nowrap;
+    padding: 10px 20px;
+}
+
+.mode-inputs {
+    transition: opacity 0.3s ease;
+}
+
+#riskResults {
+    animation: slideIn 0.4s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
@@ -13,7 +74,7 @@
 
         <!-- Data Source Selection Card -->
         <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white">
+            <div class="card-header">
                 <h5 class="card-title mb-0">
                     <i class="bi bi-database me-2"></i>
                     Select Data Source
@@ -128,6 +189,134 @@
 
                 <!-- Alert Area -->
                 <div id="alertArea" class="mt-3"></div>
+            </div>
+        </div>
+
+        <!-- Risk Calculator Section -->
+        <div class="card shadow-sm mt-5">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-calculator me-2"></i>
+                    Risk Calculator
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">Calculate optimal position sizing based on your risk management strategy.</p>
+
+                <!-- Mode Selector -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Calculation Mode:</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="calcMode" id="mode1" value="shares" checked>
+                        <label class="btn btn-outline-primary" for="mode1">
+                            <i class="bi bi-123"></i> Calculate Shares & Risk
+                        </label>
+                        <input type="radio" class="btn-check" name="calcMode" id="mode2" value="risk">
+                        <label class="btn btn-outline-primary" for="mode2">
+                            <i class="bi bi-pie-chart"></i> Calculate Position Size
+                        </label>
+                    </div>
+                    <small class="text-muted d-block mt-2" id="modeDescription">
+                        Enter target position size % and stop loss % to calculate shares and risk amount
+                    </small>
+                </div>
+
+                <!-- Common Inputs -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Symbol</label>
+                        <input type="text" id="riskSymbol" class="form-control" placeholder="AAPL">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Entry Price ($)</label>
+                        <input type="number" id="riskPrice" class="form-control" step="0.01" min="0.01" placeholder="100.00">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Portfolio Size ($)</label>
+                        <input type="number" id="riskPortfolio" class="form-control" step="0.01" min="1" placeholder="100000">
+                    </div>
+                </div>
+
+                <!-- Mode 1 Inputs -->
+                <div id="mode1Inputs" class="mode-inputs">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Target Position Size (%)</label>
+                            <input type="number" id="targetPositionPct" class="form-control" step="0.1" min="0.1" placeholder="5">
+                            <small class="text-muted">% of portfolio to allocate</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Stop Loss (%)</label>
+                            <input type="number" id="stopLossPct" class="form-control" step="0.1" min="0.1" placeholder="2">
+                            <small class="text-muted">% below entry price</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mode 2 Inputs -->
+                <div id="mode2Inputs" class="mode-inputs d-none">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Risk per Trade (%)</label>
+                            <input type="number" id="riskPerTradePct" class="form-control" step="0.1" min="0.1" placeholder="1">
+                            <small class="text-muted">% of portfolio you're willing to risk</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Stop Loss (%)</label>
+                            <input type="number" id="stopLossPctMode2" class="form-control" step="0.1" min="0.1" placeholder="2">
+                            <small class="text-muted">% below entry price</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calculate Button -->
+                <button id="calculateRiskBtn" class="btn btn-primary w-100 mb-3">
+                    <i class="bi bi-calculator"></i> Calculate
+                </button>
+
+                <!-- Results -->
+                <div id="riskResults" class="d-none">
+                    <hr>
+                    <h6 class="text-primary mb-3"><i class="bi bi-check-circle"></i> Results:</h6>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="result-item">
+                                <small class="text-muted">Number of Shares</small>
+                                <div class="h5 text-primary" id="resultShares">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="result-item">
+                                <small class="text-muted">Position Value</small>
+                                <div class="h5 text-primary" id="resultPositionValue">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="result-item">
+                                <small class="text-muted">Position Size (%)</small>
+                                <div class="h5 text-info" id="resultPositionPct">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="result-item">
+                                <small class="text-muted">Stop Loss Price</small>
+                                <div class="h5 text-warning" id="resultStopPrice">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="result-item">
+                                <small class="text-muted">Risk Amount ($)</small>
+                                <div class="h5 text-danger" id="resultRiskAmount">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="result-item">
+                                <small class="text-muted">Risk as % of Equity</small>
+                                <div class="h5 text-danger" id="resultRiskPct">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -456,6 +645,141 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
         }
     }
+
+    // ==================== Risk Calculator Logic ====================
+
+    const mode1Radio = document.getElementById('mode1');
+    const mode2Radio = document.getElementById('mode2');
+    const mode1Inputs = document.getElementById('mode1Inputs');
+    const mode2Inputs = document.getElementById('mode2Inputs');
+    const modeDescription = document.getElementById('modeDescription');
+
+    if (mode1Radio && mode2Radio) {
+        mode1Radio.addEventListener('change', () => {
+            mode1Inputs.classList.remove('d-none');
+            mode2Inputs.classList.add('d-none');
+            document.getElementById('riskResults').classList.add('d-none');
+            modeDescription.textContent = 'Enter target position size % and stop loss % to calculate shares and risk amount';
+        });
+
+        mode2Radio.addEventListener('change', () => {
+            mode1Inputs.classList.add('d-none');
+            mode2Inputs.classList.remove('d-none');
+            document.getElementById('riskResults').classList.add('d-none');
+            modeDescription.textContent = 'Enter risk per trade % and stop loss % to calculate optimal position size';
+        });
+    }
+
+    const calculateRiskBtn = document.getElementById('calculateRiskBtn');
+    if (calculateRiskBtn) {
+        calculateRiskBtn.addEventListener('click', function() {
+            const mode = document.querySelector('input[name="calcMode"]:checked').value;
+
+            const symbol = document.getElementById('riskSymbol').value.trim();
+            const entryPrice = parseFloat(document.getElementById('riskPrice').value);
+            const portfolioSize = parseFloat(document.getElementById('riskPortfolio').value);
+
+            if (!symbol) {
+                alert('Please enter a symbol');
+                return;
+            }
+            if (!entryPrice || entryPrice <= 0) {
+                alert('Please enter a valid entry price');
+                return;
+            }
+            if (!portfolioSize || portfolioSize <= 0) {
+                alert('Please enter a valid portfolio size');
+                return;
+            }
+
+            let results = {};
+
+            if (mode === 'shares') {
+                const targetPositionPct = parseFloat(document.getElementById('targetPositionPct').value);
+                const stopLossPct = parseFloat(document.getElementById('stopLossPct').value);
+
+                if (!targetPositionPct || targetPositionPct <= 0) {
+                    alert('Please enter a valid target position size %');
+                    return;
+                }
+                if (!stopLossPct || stopLossPct <= 0) {
+                    alert('Please enter a valid stop loss %');
+                    return;
+                }
+
+                results = calculateMode1(entryPrice, portfolioSize, targetPositionPct, stopLossPct);
+
+            } else {
+                const riskPerTradePct = parseFloat(document.getElementById('riskPerTradePct').value);
+                const stopLossPct = parseFloat(document.getElementById('stopLossPctMode2').value);
+
+                if (!riskPerTradePct || riskPerTradePct <= 0) {
+                    alert('Please enter a valid risk per trade %');
+                    return;
+                }
+                if (!stopLossPct || stopLossPct <= 0) {
+                    alert('Please enter a valid stop loss %');
+                    return;
+                }
+
+                results = calculateMode2(entryPrice, portfolioSize, riskPerTradePct, stopLossPct);
+            }
+
+            displayRiskResults(results);
+        });
+    }
+
+    function calculateMode1(entryPrice, portfolioSize, targetPositionPct, stopLossPct) {
+        const positionValue = (targetPositionPct / 100) * portfolioSize;
+        const numShares = Math.floor(positionValue / entryPrice);
+        const actualPositionValue = numShares * entryPrice;
+        const actualPositionPct = (actualPositionValue / portfolioSize) * 100;
+        const stopLossPrice = entryPrice * (1 - stopLossPct / 100);
+        const riskPerShare = entryPrice - stopLossPrice;
+        const riskAmount = numShares * riskPerShare;
+        const riskPct = (riskAmount / portfolioSize) * 100;
+
+        return {
+            numShares,
+            positionValue: actualPositionValue,
+            positionPct: actualPositionPct,
+            stopLossPrice,
+            riskAmount,
+            riskPct
+        };
+    }
+
+    function calculateMode2(entryPrice, portfolioSize, riskPerTradePct, stopLossPct) {
+        const desiredRiskAmount = (riskPerTradePct / 100) * portfolioSize;
+        const stopLossPrice = entryPrice * (1 - stopLossPct / 100);
+        const riskPerShare = entryPrice - stopLossPrice;
+        const numShares = Math.floor(desiredRiskAmount / riskPerShare);
+        const positionValue = numShares * entryPrice;
+        const positionPct = (positionValue / portfolioSize) * 100;
+        const actualRiskAmount = numShares * riskPerShare;
+        const actualRiskPct = (actualRiskAmount / portfolioSize) * 100;
+
+        return {
+            numShares,
+            positionValue,
+            positionPct,
+            stopLossPrice,
+            riskAmount: actualRiskAmount,
+            riskPct: actualRiskPct
+        };
+    }
+
+    function displayRiskResults(results) {
+        document.getElementById('resultShares').textContent = results.numShares.toLocaleString();
+        document.getElementById('resultPositionValue').textContent = '$' + results.positionValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('resultPositionPct').textContent = results.positionPct.toFixed(2) + '%';
+        document.getElementById('resultRiskAmount').textContent = '$' + results.riskAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('resultRiskPct').textContent = results.riskPct.toFixed(2) + '%';
+        document.getElementById('resultStopPrice').textContent = '$' + results.stopLossPrice.toFixed(2);
+        document.getElementById('riskResults').classList.remove('d-none');
+    }
+
+    // ==================== End Risk Calculator Logic ====================
 });
 </script>
 {% endblock %}
