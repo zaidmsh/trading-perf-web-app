@@ -1400,26 +1400,15 @@ function updatePositionsTable(positions) {
         let sbeDisplay = '-';
 
         // Calculate SBE to cover risk using correct formula
-        console.log(`SBE Check for ${position.symbol}:`, {
-            has_stop_loss: !!position.stop_loss,
-            stop_loss_price: position.stop_loss?.price,
-            current_price: position.current_price,
-            avg_entry_price: position.avg_entry_price
-        });
-
         if (position.stop_loss && position.stop_loss.price && position.current_price !== null && position.current_price > 0 && position.avg_entry_price) {
             // Formula: Q_sell = Q * (P_buy - P_stop) / (P_curr - P_stop)
             const stopPrice = position.stop_loss.price;
             const numerator = position.avg_entry_price - stopPrice;
             const denominator = position.current_price - stopPrice;
 
-            console.log(`SBE Calc for ${position.symbol}: Q=${position.quantity}, P_buy=${position.avg_entry_price}, P_stop=${stopPrice}, P_curr=${position.current_price}`);
-            console.log(`  Numerator: ${numerator}, Denominator: ${denominator}`);
-
             if (denominator > 0 && numerator > 0) {
                 const sharesToSell = Math.round(position.quantity * (numerator / denominator));
                 const sbePercentage = (sharesToSell / position.quantity) * 100;
-                console.log(`  SBE Result: ${sharesToSell} shares (${sbePercentage.toFixed(1)}%)`);
 
                 if (sharesToSell > 0 && sharesToSell < position.quantity) {
                     // Can freeroll - show shares to sell to cover risk
