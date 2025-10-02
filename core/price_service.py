@@ -5,6 +5,7 @@ Handles real-time stock price fetching with caching
 
 import logging
 import time
+import os
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import asyncio
@@ -14,6 +15,12 @@ import yfinance as yf
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# Set yfinance cache location to /tmp to avoid permission issues
+try:
+    yf.set_tz_cache_location("/tmp/yf_cache")
+except Exception as e:
+    logger.debug(f"Could not set yfinance cache location: {e}")
 
 
 class PriceCache:
@@ -107,7 +114,8 @@ class StockPriceService:
                     symbols_str,
                     period="1d",
                     interval="1m",
-                    progress=False
+                    progress=False,
+                    auto_adjust=True
                 )
                 
                 prices = {}
@@ -160,36 +168,16 @@ class StockPriceService:
     async def get_single_price(self, symbol: str) -> Optional[float]:
         """
         Get current price for a single symbol
-        
+
         Args:
             symbol: Stock symbol (e.g., 'AAPL')
-            
+
         Returns:
             Current price or None if unavailable
         """
         prices = await self.get_current_prices([symbol])
         return prices.get(symbol.upper())
-    
-    def is_market_hours(self) -> bool:
-        """
-        Check if it's currently market hours (rough approximation)
-        
-        Returns:
-            True if likely during market hours
-        """
-        now = datetime.now()
-        # Simple check: Monday-Friday, 9:30 AM - 4:00 PM EST (approximate)
-        # This is a basic implementation - a production system would use proper timezone handling
-        weekday = now.weekday()  # 0=Monday, 6=Sunday
-        hour = now.hour
-        
-        if weekday >= 5:  # Weekend
-            return False
-            
-        # Approximate market hours (9:30 AM - 4:00 PM EST)
-        # Note: This doesn't account for holidays or timezone differences
-        return 9 <= hour <= 16
-    
+
     def clear_cache(self):
         """Clear the price cache"""
         self.cache.clear()

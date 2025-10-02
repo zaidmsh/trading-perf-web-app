@@ -45,14 +45,8 @@ KNOWN_SPLITS = {
 class StockSplitDetector:
     """Detect and compensate for stock splits in trading data"""
 
-    def __init__(self, use_api: bool = True):
-        """
-        Initialize the stock split detector
-
-        Args:
-            use_api: Whether to fetch split data from external API (requires API key)
-        """
-        self.use_api = use_api
+    def __init__(self):
+        """Initialize the stock split detector"""
         self.split_cache = {}
 
     @lru_cache(maxsize=100)
@@ -68,38 +62,16 @@ class StockSplitDetector:
         Returns:
             List of split events with date and ratio
         """
-        # First check known splits
+        # Check known splits
         if symbol in KNOWN_SPLITS:
             splits = KNOWN_SPLITS[symbol]
             logger.info(f"Using cached split data for {symbol}: {len(splits)} splits")
             return splits
 
-        # If API is enabled, try to fetch from external source
-        if self.use_api:
-            try:
-                splits = self._fetch_splits_from_api(symbol, start_date, end_date)
-                if splits:
-                    return splits
-            except Exception as e:
-                logger.warning(f"Failed to fetch split data from API for {symbol}: {e}")
-
         # Return empty list if no splits found
         logger.info(f"No split data found for {symbol}")
         return []
 
-    def _fetch_splits_from_api(self, symbol: str, start_date: str = None, end_date: str = None) -> List[Dict]:
-        """
-        Fetch split data from external API (placeholder for actual implementation)
-
-        Note: In production, you would use a service like:
-        - Alpha Vantage API
-        - Yahoo Finance API
-        - Polygon.io
-        - IEX Cloud
-        """
-        # Placeholder - would need actual API implementation
-        logger.info(f"API fetch not implemented, using known splits for {symbol}")
-        return []
 
     def detect_potential_splits(self, trades_df: pd.DataFrame) -> Dict[str, List[Tuple[str, float]]]:
         """

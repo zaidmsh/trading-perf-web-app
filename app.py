@@ -192,9 +192,8 @@ def calculate_individual_stop_loss_percentage(position: Dict[str, Any], risk_rat
     
     # Parse risk ratio
     try:
-        risk_part, reward_part = risk_ratio.split(":")
+        risk_part, _ = risk_ratio.split(":")
         risk_multiple = float(risk_part)
-        # reward_multiple = float(reward_part)  # Not used in current calculation
     except (ValueError, AttributeError):
         raise ValueError(f"Invalid risk ratio format: {risk_ratio}")
     
@@ -283,96 +282,12 @@ class IBKRRequest(BaseModel):
     start_year: Optional[int] = None
 
 
-
-
-class ProcessRequest(BaseModel):
-    source: str  # 'csv', 'ibkr', or 'hybrid'
-    token: str = None
-    query_id: str = None
-
-
-class HybridRequest(BaseModel):
-    token: str
-    query_id: str
-
-
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Home page with file upload"""
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/upload")
-async def upload_file(files: list[UploadFile] = File(...)):
-    """Upload and process multiple IBKR CSV files"""
-    # Validate files
-    if not files:
-        raise HTTPException(status_code=400, detail="Please upload at least one CSV file")
-
-    for file in files:
-        if not file.filename.endswith('.csv'):
-            raise HTTPException(status_code=400, detail=f"File {file.filename} is not a CSV file")
-
-        if file.size > 10 * 1024 * 1024:  # 10MB limit per file
-            raise HTTPException(status_code=400, detail=f"File {file.filename} is too large (max 10MB)")
-
-    try:
-        all_roundtrips = []
-        filenames = []
-
-        # Process each CSV file
-        for file in files:
-            # Read file content
-            content = await file.read()
-            csv_content = content.decode('utf-8')
-
-            # Process the CSV
-            roundtrips_df, _, _ = process_ibkr_csv(csv_content)
-
-            if not roundtrips_df.empty:
-                all_roundtrips.append(roundtrips_df)
-                filenames.append(file.filename)
-
-        if not all_roundtrips:
-            raise HTTPException(status_code=400, detail="No valid trades found in any CSV files")
-
-        # Merge all roundtrips from multiple files
-        merged_roundtrips_df = pd.concat(all_roundtrips, ignore_index=True)
-
-        # Sort by entry date to ensure chronological order
-        if 'entry_date' in merged_roundtrips_df.columns:
-            merged_roundtrips_df = merged_roundtrips_df.sort_values('entry_date')
-            merged_roundtrips_df = merged_roundtrips_df.reset_index(drop=True)
-
-        # Calculate performance metrics on merged data
-        performance_data = calculate_performance(merged_roundtrips_df)
-
-        # Generate unique session ID
-        session_id = str(uuid.uuid4())
-
-        # Convert timestamps to strings for JSON serialization
-        roundtrips_serializable = merged_roundtrips_df.copy()
-        for col in roundtrips_serializable.columns:
-            if roundtrips_serializable[col].dtype.name.startswith('datetime'):
-                roundtrips_serializable[col] = roundtrips_serializable[col].dt.strftime('%Y-%m-%d')
-
-        # Store results
-        results_store[session_id] = {
-            "filename": ", ".join(filenames),
-            "files_count": len(filenames),
-            "upload_time": datetime.now().isoformat(),
-            "roundtrips": roundtrips_serializable.to_dict('records'),
-            "performance": performance_data
-        }
-
-        return JSONResponse({
-            "success": True,
-            "session_id": session_id,
-            "message": f"Processed {len(filenames)} file(s) with {len(merged_roundtrips_df)} total roundtrips"
-        })
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing files: {str(e)}")
 
 
 @app.get("/results/{session_id}", response_class=HTMLResponse)
@@ -511,55 +426,6 @@ async def delete_results(session_id: str):
         raise HTTPException(status_code=404, detail="Results not found")
 
 
-@app.post("/api/fetch-ibkr")
-async def fetch_ibkr_data(request: IBKRRequest):
-    """Fetch trades from IBKR FlexQuery API"""
-    try:
-        # Use data manager to fetch and process trades
-        # If start_year is provided, fetch historical data
-        if request.start_year:
-            result = await data_manager.get_trades(
-                source="ibkr",
-                token=request.token,
-                query_id=request.query_id,
-                historical=True,
-                start_year=request.start_year
-            )
-            data_source = f"IBKR Historical ({request.start_year}-present)"
-        else:
-            result = await data_manager.get_trades(
-                source="ibkr",
-                token=request.token,
-                query_id=request.query_id
-            )
-            data_source = f"IBKR FlexQuery {request.query_id}"
-
-        # Generate unique session ID
-        session_id = str(uuid.uuid4())
-
-        # Convert timestamps to strings for JSON serialization
-        roundtrips_serializable = result["roundtrips"].copy()
-        for col in roundtrips_serializable.columns:
-            if roundtrips_serializable[col].dtype.name.startswith('datetime'):
-                roundtrips_serializable[col] = roundtrips_serializable[col].dt.strftime('%Y-%m-%d')
-
-        # Store results in the same format as CSV upload
-        results_store[session_id] = {
-            "filename": data_source,
-            "files_count": 1,
-            "upload_time": datetime.now().isoformat(),
-            "roundtrips": roundtrips_serializable.to_dict('records'),
-            "performance": result["performance"]
-        }
-
-        return JSONResponse({
-            "success": True,
-            "session_id": session_id,
-            "message": f"Fetched {len(result['roundtrips'])} roundtrips from IBKR"
-        })
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/test-ibkr")
@@ -575,51 +441,6 @@ async def test_ibkr_connection(request: IBKRRequest):
         })
 
 
-@app.post("/api/hybrid-upload")
-async def hybrid_upload(token: str, query_id: str, files: list[UploadFile] = File(...)):
-    """Combine CSV files (historical) with IBKR current year data"""
-    try:
-        # Validate inputs
-        if not files:
-            raise HTTPException(status_code=400, detail="Please upload at least one CSV file for historical data")
-
-        if not token or not query_id:
-            raise HTTPException(status_code=400, detail="IBKR token and Query ID are required")
-
-        # Use data manager to process hybrid data
-        result = await data_manager.get_trades(
-            source="hybrid",
-            files=files,
-            token=token,
-            query_id=query_id
-        )
-
-        # Generate unique session ID
-        session_id = str(uuid.uuid4())
-
-        # Convert timestamps to strings for JSON serialization
-        roundtrips_serializable = result["roundtrips"].copy()
-        for col in roundtrips_serializable.columns:
-            if roundtrips_serializable[col].dtype.name.startswith('datetime'):
-                roundtrips_serializable[col] = roundtrips_serializable[col].dt.strftime('%Y-%m-%d')
-
-        # Store results
-        results_store[session_id] = {
-            "filename": f"Hybrid: {len(files)} CSV file(s) + IBKR current year",
-            "files_count": len(files) + 1,  # CSV files + IBKR
-            "upload_time": datetime.now().isoformat(),
-            "roundtrips": roundtrips_serializable.to_dict('records'),
-            "performance": result["performance"]
-        }
-
-        return JSONResponse({
-            "success": True,
-            "session_id": session_id,
-            "message": f"Combined {len(files)} CSV file(s) with IBKR data: {len(result['roundtrips'])} total roundtrips"
-        })
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 
@@ -1017,7 +838,6 @@ async def apply_risk_ratio(session_id: str, request: dict):
         
         try:
             risk_multiple = float(ratio_parts[0])
-            # reward_multiple = float(ratio_parts[1])  # Not used in current calculation
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid risk ratio values. Must be numbers.")
         
