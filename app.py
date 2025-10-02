@@ -653,6 +653,225 @@ async def remove_manual_trade(session_id: str, symbol: str, position_type: str):
         raise HTTPException(status_code=500, detail=f"Failed to remove manual trade: {str(e)}")
 
 
+@app.post("/api/position/{session_id}/{symbol}/{position_type}/add")
+async def add_shares_to_position(session_id: str, symbol: str, position_type: str, request: dict):
+    """Add shares to an existing position"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        from datetime import datetime
+        from core.price_service import get_stock_prices
+        from core.open_positions import calculate_portfolio_summary
+
+        price = request.get("price")
+        quantity = request.get("quantity")
+
+        if not price or price <= 0:
+            raise HTTPException(status_code=400, detail="Invalid price")
+        if not quantity or quantity <= 0:
+            raise HTTPException(status_code=400, detail="Invalid quantity")
+
+        # Get session data
+        data = results_store[session_id]
+        open_positions_data = data.get("open_positions", {"positions": [], "summary": {}})
+        positions = open_positions_data.get("positions", [])
+
+        # Find the position
+        position = None
+        for pos in positions:
+            if pos["symbol"] == symbol and pos["position_type"] == position_type:
+                position = pos
+                break
+
+        if not position:
+            raise HTTPException(status_code=404, detail=f"Position not found: {symbol}")
+
+        # Get current price
+        current_prices = await get_stock_prices([symbol])
+        current_price = current_prices.get(symbol) if current_prices else None
+        if current_price is None:
+            current_price = price  # Use entry price if fetch fails
+
+        # Add new lot
+        new_lot = {
+            "entry_date": datetime.now().strftime("%Y-%m-%d"),
+            "original_quantity": quantity,
+            "quantity_remaining": quantity,
+            "entry_price": price,
+            "commission": 0.0,
+            "cost_basis": price * quantity,
+            "partial_sales": []
+        }
+        position["lots"].append(new_lot)
+
+        # Recalculate position metrics
+        old_quantity = position["quantity"]
+        old_cost_basis = position["cost_basis"]
+
+        new_total_quantity = old_quantity + quantity
+        new_total_cost = (old_quantity * position["avg_entry_price"]) + (quantity * price)
+        new_avg_entry = new_total_cost / new_total_quantity
+        new_cost_basis = old_cost_basis + (price * quantity)
+
+        position["quantity"] = new_total_quantity
+        position["avg_entry_price"] = new_avg_entry
+        position["cost_basis"] = new_cost_basis
+        position["total_cost_basis"] = new_cost_basis
+        position["remaining_cost_basis"] = new_cost_basis
+        position["high_water_mark"] = max(position.get("high_water_mark", 0), new_total_quantity)
+        position["orders_count"] = position.get("orders_count", 0) + 1
+        position["latest_entry"] = datetime.now().strftime("%Y-%m-%d")
+
+        # Recalculate P&L with current price
+        position["current_price"] = current_price
+        position["market_value"] = current_price * new_total_quantity
+        position["unrealized_pnl"] = position["market_value"] - new_cost_basis
+        position["unrealized_pnl_pct"] = (position["unrealized_pnl"] / new_cost_basis * 100) if new_cost_basis > 0 else 0
+        position["total_pnl"] = position["unrealized_pnl"] + position.get("realized_pnl", 0)
+
+        # Recalculate summary
+        summary = calculate_portfolio_summary(positions)
+
+        # Update stored data
+        open_positions_data["positions"] = positions
+        open_positions_data["summary"] = summary
+        data["open_positions"] = open_positions_data
+
+        logger.info(f"Added {quantity} shares to {symbol} at ${price}")
+
+        return JSONResponse(ensure_json_serializable({
+            "success": True,
+            "message": f"Added {quantity} shares to {symbol}",
+            "positions": positions,
+            "summary": summary
+        }))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding shares to position: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to add shares: {str(e)}")
+
+
+@app.post("/api/position/{session_id}/{symbol}/{position_type}/reduce")
+async def reduce_shares_from_position(session_id: str, symbol: str, position_type: str, request: dict):
+    """Reduce shares from an existing position"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        from datetime import datetime
+        from core.price_service import get_stock_prices
+        from core.open_positions import calculate_portfolio_summary
+
+        price = request.get("price")
+        quantity = request.get("quantity")
+
+        if not price or price <= 0:
+            raise HTTPException(status_code=400, detail="Invalid price")
+        if not quantity or quantity <= 0:
+            raise HTTPException(status_code=400, detail="Invalid quantity")
+
+        # Get session data
+        data = results_store[session_id]
+        open_positions_data = data.get("open_positions", {"positions": [], "summary": {}})
+        positions = open_positions_data.get("positions", [])
+
+        # Find the position
+        position = None
+        for pos in positions:
+            if pos["symbol"] == symbol and pos["position_type"] == position_type:
+                position = pos
+                break
+
+        if not position:
+            raise HTTPException(status_code=404, detail=f"Position not found: {symbol}")
+
+        if quantity > position["quantity"]:
+            raise HTTPException(status_code=400, detail=f"Cannot reduce more than {position['quantity']} shares")
+
+        # Get current price
+        current_prices = await get_stock_prices([symbol])
+        current_price = current_prices.get(symbol) if current_prices else None
+        if current_price is None:
+            current_price = price  # Use exit price if fetch fails
+
+        # Calculate realized P&L for the reduced shares
+        # Using weighted average entry price
+        avg_entry_price = position["avg_entry_price"]
+        cost_basis_of_sold = avg_entry_price * quantity
+        proceeds = price * quantity
+        realized_pnl_from_sale = proceeds - cost_basis_of_sold
+
+        # Track the sale in lots' partial_sales
+        sale_record = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "quantity": quantity,
+            "exit_price": price,
+            "proceeds": proceeds,
+            "cost_basis": cost_basis_of_sold,
+            "realized_pnl": realized_pnl_from_sale
+        }
+
+        # Add sale to the first lot (or distribute across lots using FIFO if needed)
+        # For simplicity, we'll add to the first lot's partial_sales
+        if position.get("lots") and len(position["lots"]) > 0:
+            if "partial_sales" not in position["lots"][0]:
+                position["lots"][0]["partial_sales"] = []
+            position["lots"][0]["partial_sales"].append(sale_record)
+
+        # Update position metrics
+        old_quantity = position["quantity"]
+        new_quantity = old_quantity - quantity
+
+        if new_quantity == 0:
+            # Position fully closed - remove it
+            positions = [p for p in positions if not (p["symbol"] == symbol and p["position_type"] == position_type)]
+        else:
+            # Partial reduction
+            new_cost_basis = position["cost_basis"] - cost_basis_of_sold
+
+            position["quantity"] = new_quantity
+            position["cost_basis"] = new_cost_basis
+            position["remaining_cost_basis"] = new_cost_basis
+            position["realized_pnl"] = position.get("realized_pnl", 0) + realized_pnl_from_sale
+            position["realized_proceeds"] = position.get("realized_proceeds", 0) + proceeds
+
+            # Recalculate P&L with current price
+            position["current_price"] = current_price
+            position["market_value"] = current_price * new_quantity
+            position["unrealized_pnl"] = position["market_value"] - new_cost_basis
+            position["unrealized_pnl_pct"] = (position["unrealized_pnl"] / new_cost_basis * 100) if new_cost_basis > 0 else 0
+            position["total_pnl"] = position["unrealized_pnl"] + position["realized_pnl"]
+
+        # Recalculate summary
+        summary = calculate_portfolio_summary(positions)
+
+        # Update stored data
+        open_positions_data["positions"] = positions
+        open_positions_data["summary"] = summary
+        data["open_positions"] = open_positions_data
+
+        logger.info(f"Reduced {quantity} shares from {symbol} at ${price}, realized P&L: ${realized_pnl_from_sale:.2f}")
+
+        message = f"Position closed" if new_quantity == 0 else f"Reduced {quantity} shares from {symbol}"
+
+        return JSONResponse(ensure_json_serializable({
+            "success": True,
+            "message": message,
+            "realized_pnl": realized_pnl_from_sale,
+            "positions": positions,
+            "summary": summary
+        }))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reducing shares from position: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reduce shares: {str(e)}")
+
+
 @app.post("/api/test-ibkr")
 async def test_ibkr_connection(request: IBKRRequest):
     """Test IBKR FlexQuery connection"""

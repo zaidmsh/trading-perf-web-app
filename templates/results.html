@@ -791,6 +791,87 @@
     </div>
 </div>
 
+<!-- Add Shares Modal -->
+<div class="modal fade" id="addSharesModal" tabindex="-1" aria-labelledby="addSharesModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addSharesModalLabel">
+                    <i class="bi bi-plus-circle me-2"></i>Add Shares to Position
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Add more shares to <strong id="addSharesSymbol"></strong></p>
+                <form id="addSharesForm">
+                    <input type="hidden" id="addSharesSymbolValue">
+                    <input type="hidden" id="addSharesPositionType">
+                    <div class="mb-3">
+                        <label for="addSharesPrice" class="form-label">Entry Price ($) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="addSharesPrice" step="0.01" min="0.01" required placeholder="e.g., 150.50">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addSharesQuantity" class="form-label">Quantity <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="addSharesQuantity" min="1" required placeholder="e.g., 50">
+                        <small class="text-muted">Number of shares to add</small>
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Average entry price and all metrics will be recalculated automatically.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="saveAddSharesBtn">
+                    <i class="bi bi-plus-circle me-1"></i>Add Shares
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reduce Shares Modal -->
+<div class="modal fade" id="reduceSharesModal" tabindex="-1" aria-labelledby="reduceSharesModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reduceSharesModalLabel">
+                    <i class="bi bi-dash-circle me-2"></i>Reduce Shares from Position
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Reduce shares from <strong id="reduceSharesSymbol"></strong></p>
+                <form id="reduceSharesForm">
+                    <input type="hidden" id="reduceSharesSymbolValue">
+                    <input type="hidden" id="reduceSharesPositionType">
+                    <input type="hidden" id="reduceSharesMaxQuantity">
+                    <div class="mb-3">
+                        <label for="reduceSharesPrice" class="form-label">Exit Price ($) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="reduceSharesPrice" step="0.01" min="0.01" required placeholder="e.g., 155.75">
+                    </div>
+                    <div class="mb-3">
+                        <label for="reduceSharesQuantity" class="form-label">Quantity <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="reduceSharesQuantity" min="1" required placeholder="e.g., 25">
+                        <small class="text-muted">Number of shares to reduce (max: <span id="maxSharesDisplay"></span>)</small>
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Realized P&L will be calculated and all position metrics will be updated automatically.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="saveReduceSharesBtn">
+                    <i class="bi bi-dash-circle me-1"></i>Reduce Shares
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
             <!-- Calculator Tab -->
             <div class="tab-pane fade" id="calculator" role="tabpanel">
                 <div class="container-fluid mt-4">
@@ -1518,15 +1599,65 @@ function createDetailRow(position) {
                 </div>`;
     }
     
-    // Add partial sales section placeholder
-    detailHTML += `
+    // Add partial sales section
+    const allPartialSales = [];
+    position.lots.forEach(lot => {
+        if (lot.partial_sales && lot.partial_sales.length > 0) {
+            lot.partial_sales.forEach(sale => {
+                allPartialSales.push(sale);
+            });
+        }
+    });
+
+    if (allPartialSales.length > 0) {
+        detailHTML += `
+                <div class="mt-3">
+                    <h6>Partial Sales History</h6>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Quantity</th>
+                                <th>Exit Price</th>
+                                <th>Proceeds</th>
+                                <th>Cost Basis</th>
+                                <th>Realized P&L ($)</th>
+                                <th>Realized P&L (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+        allPartialSales.forEach(sale => {
+            const pnlPct = (sale.realized_pnl / sale.cost_basis * 100).toFixed(2);
+            const pnlClass = sale.realized_pnl >= 0 ? 'text-success' : 'text-danger';
+            detailHTML += `
+                            <tr>
+                                <td>${sale.date}</td>
+                                <td>${sale.quantity}</td>
+                                <td>$${sale.exit_price.toFixed(2)}</td>
+                                <td>$${sale.proceeds.toFixed(2)}</td>
+                                <td>$${sale.cost_basis.toFixed(2)}</td>
+                                <td class="${pnlClass}">$${sale.realized_pnl.toFixed(2)}</td>
+                                <td class="${pnlClass}">${pnlPct}%</td>
+                            </tr>`;
+        });
+
+        detailHTML += `
+                        </tbody>
+                    </table>
+                </div>`;
+    } else {
+        detailHTML += `
                 <div class="mt-3">
                     <h6>Partial Sales History</h6>
                     <div class="alert alert-secondary">
-                        <i class="bi bi-clock me-2"></i>
-                        Partial sales tracking coming soon. This will show realized P&L from partial position sales.
+                        <i class="bi bi-info-circle me-2"></i>
+                        No partial sales recorded yet.
                     </div>
-                </div>
+                </div>`;
+    }
+
+    detailHTML += `
             </div>
         </div>`;
     
@@ -1711,6 +1842,18 @@ function updatePositionsWithFreshData(data) {
                 actionsHtml = `<button class="btn btn-sm btn-outline-primary" onclick="showStopLossModal('${position.symbol}', ${position.avg_entry_price}, '${position.position_type}')">Set Stop</button>`;
             }
         }
+
+        // Add shares management buttons (Add/Reduce)
+        actionsHtml += `
+            <div class="btn-group ms-1" role="group">
+                <button class="btn btn-sm btn-outline-success" onclick="showAddSharesModal('${position.symbol}', '${position.position_type}')" title="Add shares to position">
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-warning" onclick="showReduceSharesModal('${position.symbol}', '${position.position_type}', ${position.quantity})" title="Reduce shares from position">
+                    <i class="bi bi-dash-circle"></i>
+                </button>
+            </div>
+        `;
 
         // Add remove button for manual trades
         if (isManualTrade) {
@@ -2035,6 +2178,132 @@ async function removeManualTrade(symbol, positionType) {
         console.error('Error removing manual trade:', error);
         showNotification('error', `Error removing manual trade: ${error.message}`);
     }
+}
+
+// Show Add Shares Modal
+function showAddSharesModal(symbol, positionType) {
+    document.getElementById('addSharesSymbol').textContent = symbol;
+    document.getElementById('addSharesSymbolValue').value = symbol;
+    document.getElementById('addSharesPositionType').value = positionType;
+    document.getElementById('addSharesForm').reset();
+
+    const modal = new bootstrap.Modal(document.getElementById('addSharesModal'));
+    modal.show();
+}
+
+// Show Reduce Shares Modal
+function showReduceSharesModal(symbol, positionType, maxQuantity) {
+    document.getElementById('reduceSharesSymbol').textContent = symbol;
+    document.getElementById('reduceSharesSymbolValue').value = symbol;
+    document.getElementById('reduceSharesPositionType').value = positionType;
+    document.getElementById('reduceSharesMaxQuantity').value = maxQuantity;
+    document.getElementById('maxSharesDisplay').textContent = maxQuantity;
+    document.getElementById('reduceSharesQuantity').max = maxQuantity;
+    document.getElementById('reduceSharesForm').reset();
+
+    const modal = new bootstrap.Modal(document.getElementById('reduceSharesModal'));
+    modal.show();
+}
+
+// Save Add Shares
+const saveAddSharesBtn = document.getElementById('saveAddSharesBtn');
+if (saveAddSharesBtn) {
+    saveAddSharesBtn.addEventListener('click', async function() {
+        const symbol = document.getElementById('addSharesSymbolValue').value;
+        const positionType = document.getElementById('addSharesPositionType').value;
+        const price = parseFloat(document.getElementById('addSharesPrice').value);
+        const quantity = parseInt(document.getElementById('addSharesQuantity').value);
+
+        if (!price || price <= 0) {
+            alert('Please enter a valid entry price');
+            return;
+        }
+        if (!quantity || quantity <= 0) {
+            alert('Please enter a valid quantity');
+            return;
+        }
+
+        try {
+            saveAddSharesBtn.disabled = true;
+            saveAddSharesBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Adding...';
+
+            const response = await fetch(`/api/position/${SESSION_ID}/${symbol}/${positionType}/add`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ price, quantity })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addSharesModal'));
+                modal.hide();
+                await loadOpenPositions();
+                showNotification('success', `Added ${quantity} shares to ${symbol}`);
+            } else {
+                throw new Error(result.detail || 'Failed to add shares');
+            }
+        } catch (error) {
+            console.error('Error adding shares:', error);
+            showNotification('error', `Error adding shares: ${error.message}`);
+        } finally {
+            saveAddSharesBtn.disabled = false;
+            saveAddSharesBtn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Add Shares';
+        }
+    });
+}
+
+// Save Reduce Shares
+const saveReduceSharesBtn = document.getElementById('saveReduceSharesBtn');
+if (saveReduceSharesBtn) {
+    saveReduceSharesBtn.addEventListener('click', async function() {
+        const symbol = document.getElementById('reduceSharesSymbolValue').value;
+        const positionType = document.getElementById('reduceSharesPositionType').value;
+        const price = parseFloat(document.getElementById('reduceSharesPrice').value);
+        const quantity = parseInt(document.getElementById('reduceSharesQuantity').value);
+        const maxQuantity = parseInt(document.getElementById('reduceSharesMaxQuantity').value);
+
+        if (!price || price <= 0) {
+            alert('Please enter a valid exit price');
+            return;
+        }
+        if (!quantity || quantity <= 0) {
+            alert('Please enter a valid quantity');
+            return;
+        }
+        if (quantity > maxQuantity) {
+            alert(`Quantity cannot exceed ${maxQuantity} shares`);
+            return;
+        }
+
+        try {
+            saveReduceSharesBtn.disabled = true;
+            saveReduceSharesBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Reducing...';
+
+            const response = await fetch(`/api/position/${SESSION_ID}/${symbol}/${positionType}/reduce`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ price, quantity })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('reduceSharesModal'));
+                modal.hide();
+                await loadOpenPositions();
+                showNotification('success', `Reduced ${quantity} shares from ${symbol}`);
+            } else {
+                throw new Error(result.detail || 'Failed to reduce shares');
+            }
+        } catch (error) {
+            console.error('Error reducing shares:', error);
+            showNotification('error', `Error reducing shares: ${error.message}`);
+        } finally {
+            saveReduceSharesBtn.disabled = false;
+            saveReduceSharesBtn.innerHTML = '<i class="bi bi-dash-circle me-1"></i>Reduce Shares';
+        }
+    });
 }
 
 function showNotification(type, message) {
