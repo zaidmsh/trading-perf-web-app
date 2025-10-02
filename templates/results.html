@@ -1398,41 +1398,60 @@ function updatePositionsTable(positions) {
         
         // SBE (Shares to Break Even) Information
         let sbeDisplay = '-';
-        
-        // Only calculate SBE if position is profitable
-        if (position.unrealized_pnl !== null && position.unrealized_pnl <= 0) {
-            // Position is at a loss or breakeven - no SBE calculation needed
-            sbeDisplay = '<span class="text-muted">-</span>';
-        } else if (position.current_price !== null && position.current_price !== undefined && position.current_price > 0 && position.cost_basis) {
-            // Position is profitable - calculate SBE
-            const sharesToSell = Math.round(position.cost_basis / position.current_price);
-            const sbePercentage = (sharesToSell / position.quantity) * 100;
-            
-            if (sharesToSell > 0 && sharesToSell < position.quantity) {
-                // Can freeroll - show shares to sell
-                const sharesRemaining = position.quantity - sharesToSell;
-                const recoveryAmount = sharesToSell * position.current_price;
-                
-                // Green bold for profitable positions
-                sbeDisplay = `
-                    <span class="text-success fw-bold" title="SBE: Sell ${sharesToSell} shares (${sbePercentage.toFixed(1)}%) at $${position.current_price.toFixed(4)} to recover $${recoveryAmount.toFixed(2)} and freeroll ${sharesRemaining} shares">
-                        ${sharesToSell}
-                        <small class="text-muted">(${sbePercentage.toFixed(0)}%)</small>
-                    </span>
-                `;
-                
-                // Add green highlighting for profitable positions
-                if (!row.classList.contains('table-danger')) {
-                    row.classList.add('table-success');
+
+        // Calculate SBE to cover risk using correct formula
+        console.log(`SBE Check for ${position.symbol}:`, {
+            has_stop_loss: !!position.stop_loss,
+            stop_loss_price: position.stop_loss?.price,
+            current_price: position.current_price,
+            avg_entry_price: position.avg_entry_price
+        });
+
+        if (position.stop_loss && position.stop_loss.price && position.current_price !== null && position.current_price > 0 && position.avg_entry_price) {
+            // Formula: Q_sell = Q * (P_buy - P_stop) / (P_curr - P_stop)
+            const stopPrice = position.stop_loss.price;
+            const numerator = position.avg_entry_price - stopPrice;
+            const denominator = position.current_price - stopPrice;
+
+            console.log(`SBE Calc for ${position.symbol}: Q=${position.quantity}, P_buy=${position.avg_entry_price}, P_stop=${stopPrice}, P_curr=${position.current_price}`);
+            console.log(`  Numerator: ${numerator}, Denominator: ${denominator}`);
+
+            if (denominator > 0 && numerator > 0) {
+                const sharesToSell = Math.round(position.quantity * (numerator / denominator));
+                const sbePercentage = (sharesToSell / position.quantity) * 100;
+                console.log(`  SBE Result: ${sharesToSell} shares (${sbePercentage.toFixed(1)}%)`);
+
+                if (sharesToSell > 0 && sharesToSell < position.quantity) {
+                    // Can freeroll - show shares to sell to cover risk
+                    const sharesRemaining = position.quantity - sharesToSell;
+                    const recoveryAmount = sharesToSell * position.current_price;
+
+                    sbeDisplay = `
+                        <span class="text-success fw-bold" title="SBE: Sell ${sharesToSell} shares (${sbePercentage.toFixed(1)}%) at $${position.current_price.toFixed(4)} to recover risk amount $${position.stop_loss.risk_amount.toFixed(2)} and freeroll ${sharesRemaining} shares">
+                            ${sharesToSell}
+                            <small class="text-muted">(${sbePercentage.toFixed(0)}%)</small>
+                        </span>
+                    `;
+
+                    // Add green highlighting for profitable positions
+                    if (position.unrealized_pnl > 0 && !row.classList.contains('table-danger')) {
+                        row.classList.add('table-success');
+                    }
+                } else if (sharesToSell >= position.quantity) {
+                    // Need to sell all shares (not profitable enough for freeroll)
+                    sbeDisplay = `<span class="text-warning" title="Current price $${position.current_price.toFixed(4)} requires selling all ${position.quantity} shares to cover risk.">All</span>`;
+                } else {
+                    sbeDisplay = '<span class="text-success">0</span>';
                 }
-            } else if (sharesToSell >= position.quantity) {
-                // Need to sell all shares (position not profitable enough for freeroll)
-                sbeDisplay = `<span class="text-warning" title="Current price $${position.current_price.toFixed(4)} requires selling all ${position.quantity} shares to break even.">All</span>`;
             } else {
-                sbeDisplay = '<span class="text-success">0</span>';
+                // Position not profitable yet
+                sbeDisplay = '<span class="text-muted">-</span>';
             }
+        } else if (position.unrealized_pnl !== null && position.unrealized_pnl <= 0) {
+            // Position is at a loss or breakeven - no SBE calculation
+            sbeDisplay = '<span class="text-muted">-</span>';
         } else {
-            // No current price available
+            // No stop loss set - cannot calculate SBE
             sbeDisplay = '<span class="text-muted">-</span>';
         }
         
@@ -1779,26 +1798,29 @@ function updatePositionsWithFreshData(data) {
             : '<span class="text-muted">-</span>';
         cells[8].innerHTML = rMultipleDisplay;
         
-        // SBE (index 9) - recalculate based on fresh price
+        // SBE (index 9) - recalculate based on fresh price using correct formula
         let sbeDisplay = '<span class="text-muted">-</span>';
-        if (position.current_price !== null && position.current_price !== undefined && position.current_price > 0 && position.cost_basis) {
-            const sharesToSell = Math.round(position.cost_basis / position.current_price);
-            
-            // Only show for profitable positions
-            if (position.unrealized_pnl !== null && position.unrealized_pnl > 0) {
+        if (position.stop_loss && position.stop_loss.price && position.current_price !== null && position.current_price > 0 && position.avg_entry_price) {
+            // Formula: Q_sell = Q * (P_buy - P_stop) / (P_curr - P_stop)
+            const stopPrice = position.stop_loss.price;
+            const numerator = position.avg_entry_price - stopPrice;
+            const denominator = position.current_price - stopPrice;
+
+            if (denominator > 0 && numerator > 0) {
+                const sharesToSell = Math.round(position.quantity * (numerator / denominator));
+                const sbePercentage = (sharesToSell / position.quantity) * 100;
+
                 if (sharesToSell > 0 && sharesToSell < position.quantity) {
-                    sbeDisplay = `<span class="text-success fw-bold">${sharesToSell !== null && sharesToSell !== undefined && !isNaN(sharesToSell) ? sharesToSell.toLocaleString() : 'N/A'}</span>`;
+                    sbeDisplay = `<span class="text-success fw-bold">${sharesToSell} <small class="text-muted">(${sbePercentage.toFixed(0)}%)</small></span>`;
                     // Add green highlighting for profitable positions
-                    if (!targetRow.classList.contains('table-danger')) {
+                    if (position.unrealized_pnl > 0 && !targetRow.classList.contains('table-danger')) {
                         targetRow.classList.add('table-success');
                     }
                 } else if (sharesToSell >= position.quantity) {
-                    sbeDisplay = `<span class="text-warning" title="Current price $${position.current_price.toFixed(4)} requires selling all ${position.quantity} shares to break even.">All</span>`;
+                    sbeDisplay = `<span class="text-warning">All</span>`;
                 } else {
                     sbeDisplay = '<span class="text-success">0</span>';
                 }
-            } else {
-                sbeDisplay = '<span class="text-muted">-</span>';
             }
         }
         cells[9].innerHTML = sbeDisplay;

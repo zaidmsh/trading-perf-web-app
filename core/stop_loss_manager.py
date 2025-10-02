@@ -338,16 +338,12 @@ class StopLossManager:
                     else:  # short
                         target_reached = bool(current_price <= target_price)
                     
-                    # SBE calculation: How many shares to sell at current price to recover cost basis
-                    # This is the key calculation for freerolling the position
-                    if target_reached:
-                        # Use current price for SBE calculation when target is reached
-                        shares_to_sell_at_current = cost_basis / current_price
-                    else:
-                        # Show what SBE would be at target price
-                        shares_to_sell_at_current = cost_basis / target_price
-                    
-                    shares_to_sell = min(shares_to_sell_at_current, quantity)  # Can't sell more than we have
+                    # SBE calculation: shares to sell at each R-Multiple
+                    # At 1R: sell 50% (1/2), at 2R: sell 33.33% (1/3), at 3R: sell 25% (1/4), etc.
+                    # Formula: sell 1/(r_level + 1) of shares
+                    shares_to_sell = quantity / (r_level + 1)
+
+                    shares_to_sell = min(shares_to_sell, quantity)  # Can't sell more than we have
                     shares_remaining = quantity - shares_to_sell
                     
                     # Calculate recovery amount at execution price
@@ -424,14 +420,11 @@ class StopLossManager:
                 else:  # short
                     target_reached = bool(current_price <= target_price)
                 
-                # SBE calculation: shares to sell to recover cost basis
-                if target_reached:
-                    # When profitable, calculate SBE at current price
-                    shares_to_sell = cost_basis / current_price
-                else:
-                    # Show what SBE would be at target price
-                    shares_to_sell = cost_basis / target_price
-                
+                # SBE calculation: shares to sell at each R-Multiple
+                # At 1R: sell 50% (1/2), at 2R: sell 33.33% (1/3), at 3R: sell 25% (1/4), etc.
+                # Formula: sell 1/(r_level + 1) of shares
+                shares_to_sell = quantity / (r_level + 1)
+
                 shares_to_sell = min(shares_to_sell, quantity)  # Can't sell more than we have
                 shares_remaining = max(0, quantity - shares_to_sell)
                 
