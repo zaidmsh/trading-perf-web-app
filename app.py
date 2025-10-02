@@ -282,6 +282,15 @@ class IBKRRequest(BaseModel):
     start_year: Optional[int] = None
 
 
+class ManualTradeInput(BaseModel):
+    symbol: str
+    entry_price: float
+    quantity: int
+    trade_type: str  # "LONG" or "SHORT"
+    risk_ratio: Optional[str] = "none"  # e.g., "2:1", "3:1", or "none"
+    time_period: Optional[str] = "since_inception"  # Time period for average gain calculation
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Home page with file upload"""
@@ -426,6 +435,164 @@ async def delete_results(session_id: str):
         raise HTTPException(status_code=404, detail="Results not found")
 
 
+@app.post("/api/manual-trade/{session_id}")
+async def add_manual_trade(session_id: str, trade: ManualTradeInput):
+    """Add a manual trade to open positions"""
+    if session_id not in results_store:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        from datetime import datetime
+        from core.price_service import get_stock_prices
+        from core.open_positions import calculate_portfolio_summary
+
+        # Get session data
+        data = results_store[session_id]
+
+        # Get current price for the symbol
+        current_prices = await get_stock_prices([trade.symbol])
+        if trade.symbol not in current_prices or current_prices[trade.symbol] is None:
+            raise HTTPException(status_code=400, detail=f"Could not fetch current price for {trade.symbol}")
+
+        current_price = current_prices[trade.symbol]
+
+        # Calculate position metrics
+        cost_basis = trade.entry_price * trade.quantity
+        market_value = current_price * trade.quantity
+        unrealized_pnl = market_value - cost_basis
+        unrealized_pnl_pct = (unrealized_pnl / cost_basis * 100) if cost_basis > 0 else 0
+
+        # Create new position entry matching the structure from extract_open_positions
+        new_position = {
+            "symbol": trade.symbol,
+            "position_type": "Long" if trade.trade_type.upper() == "LONG" else "Short",
+            "quantity": trade.quantity,
+            "high_water_mark": trade.quantity,
+            "avg_entry_price": trade.entry_price,
+            "cost_basis": cost_basis,
+            "total_commission": 0.0,
+            "orders_count": 1,
+            "realized_pnl": 0.0,
+            "realized_proceeds": 0.0,
+            "total_cost_basis": cost_basis,
+            "remaining_cost_basis": cost_basis,
+            "lots": [{
+                "entry_date": datetime.now().strftime("%Y-%m-%d"),
+                "original_quantity": trade.quantity,
+                "quantity_remaining": trade.quantity,
+                "entry_price": trade.entry_price,
+                "commission": 0.0,
+                "cost_basis": cost_basis,
+                "partial_sales": []
+            }],
+            "current_price": current_price,
+            "market_value": market_value,
+            "unrealized_pnl": unrealized_pnl,
+            "unrealized_pnl_pct": unrealized_pnl_pct,
+            "total_pnl": unrealized_pnl,
+            "portfolio": "Manual",
+            "code": "USD",
+            "earliest_entry": datetime.now().strftime("%Y-%m-%d"),
+            "latest_entry": datetime.now().strftime("%Y-%m-%d")
+        }
+
+        # Get existing positions
+        open_positions_data = data.get("open_positions", {"positions": [], "summary": {}})
+        positions = open_positions_data.get("positions", [])
+
+        # Check if there's already an open position for this symbol
+        existing_position = None
+        for pos in positions:
+            if pos["symbol"] == trade.symbol and pos["position_type"] == new_position["position_type"]:
+                existing_position = pos
+                break
+
+        if existing_position:
+            # Merge the new trade into the existing position
+            # Add the new lot to the lots array
+            existing_position["lots"].append(new_position["lots"][0])
+
+            # Recalculate aggregated metrics
+            total_quantity = existing_position["quantity"] + trade.quantity
+            total_cost = (existing_position["quantity"] * existing_position["avg_entry_price"]) + (trade.quantity * trade.entry_price)
+            new_avg_entry = total_cost / total_quantity
+            new_cost_basis = existing_position["cost_basis"] + cost_basis
+            new_market_value = total_quantity * current_price
+            new_unrealized_pnl = new_market_value - new_cost_basis
+            new_unrealized_pnl_pct = (new_unrealized_pnl / new_cost_basis * 100) if new_cost_basis > 0 else 0
+
+            # Update existing position
+            existing_position["quantity"] = total_quantity
+            existing_position["high_water_mark"] = max(existing_position.get("high_water_mark", 0), total_quantity)
+            existing_position["avg_entry_price"] = new_avg_entry
+            existing_position["cost_basis"] = new_cost_basis
+            existing_position["total_cost_basis"] = new_cost_basis
+            existing_position["remaining_cost_basis"] = new_cost_basis
+            existing_position["market_value"] = new_market_value
+            existing_position["unrealized_pnl"] = new_unrealized_pnl
+            existing_position["unrealized_pnl_pct"] = new_unrealized_pnl_pct
+            existing_position["total_pnl"] = new_unrealized_pnl + existing_position.get("realized_pnl", 0)
+            existing_position["orders_count"] = existing_position.get("orders_count", 0) + 1
+            existing_position["latest_entry"] = datetime.now().strftime("%Y-%m-%d")
+            existing_position["current_price"] = current_price
+
+            logger.info(f"Merged manual {trade.trade_type} trade into existing position: {trade.quantity} shares of {trade.symbol} @ ${trade.entry_price}")
+        else:
+            # Add new position to the list
+            positions.append(new_position)
+            logger.info(f"Added new manual {trade.trade_type} position: {trade.quantity} shares of {trade.symbol} @ ${trade.entry_price}")
+
+        # Recalculate summary
+        summary = calculate_portfolio_summary(positions)
+
+        # Update stored data
+        open_positions_data["positions"] = positions
+        open_positions_data["summary"] = summary
+        data["open_positions"] = open_positions_data
+
+        # Apply risk ratio if provided
+        position_to_update = existing_position if existing_position else new_position
+
+        if trade.risk_ratio and trade.risk_ratio != "none":
+            try:
+                from core.stop_loss_manager import stop_loss_manager
+
+                # Get performance data for average gain
+                performance_data = data.get("performance", {})
+                average_gain = get_average_gain_for_period(performance_data, trade.time_period)
+
+                if average_gain > 0:
+                    # Calculate individual stop loss percentage
+                    individual_stop_loss_percentage = calculate_individual_stop_loss_percentage(
+                        position_to_update, trade.risk_ratio, average_gain
+                    )
+
+                    # Set stop loss
+                    stop_loss = stop_loss_manager.set_stop_loss(
+                        session_id,
+                        position_to_update,
+                        "percentage",
+                        individual_stop_loss_percentage
+                    )
+
+                    logger.info(f"Applied {trade.risk_ratio} risk ratio to manual trade {trade.symbol}: Stop loss at ${stop_loss.stop_loss_price:.4f}")
+            except Exception as e:
+                logger.warning(f"Could not apply risk ratio to manual trade: {e}")
+
+        message = f"Merged into existing position" if existing_position else f"Added new {trade.trade_type} position"
+
+        return JSONResponse(ensure_json_serializable({
+            "success": True,
+            "message": f"{message}: {trade.quantity} shares of {trade.symbol} @ ${trade.entry_price}",
+            "positions": positions,
+            "summary": summary
+        }))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding manual trade: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to add manual trade: {str(e)}")
 
 
 @app.post("/api/test-ibkr")

@@ -600,6 +600,14 @@
                                 </table>
                             </div>
                         </div>
+
+                        <!-- Add Trade Button -->
+                        <div id="addTradeButtonContainer" class="d-none mt-3">
+                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addTradeModal">
+                                <i class="bi bi-plus-circle me-2"></i>Add Trade
+                            </button>
+                            <small class="text-muted ms-3">Add same-day trades not yet available from IBKR</small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -728,6 +736,55 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="saveStopLossBtn">
                     <i class="bi bi-shield-check me-1"></i>Set Stop Loss
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Trade Modal -->
+<div class="modal fade" id="addTradeModal" tabindex="-1" aria-labelledby="addTradeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addTradeModalLabel">
+                    <i class="bi bi-plus-circle me-2"></i>Add Manual Trade
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Add same-day trades not yet available from IBKR. All metrics (stop loss, R-Multiple, SBE) will be calculated automatically.</p>
+                <form id="addTradeForm">
+                    <div class="mb-3">
+                        <label for="tradeSymbol" class="form-label">Symbol <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="tradeSymbol" required placeholder="e.g., AAPL">
+                    </div>
+                    <div class="mb-3">
+                        <label for="tradeEntryPrice" class="form-label">Entry Price ($) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="tradeEntryPrice" step="0.01" min="0.01" required placeholder="e.g., 150.50">
+                    </div>
+                    <div class="mb-3">
+                        <label for="tradeQuantity" class="form-label">Quantity <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="tradeQuantity" min="1" required placeholder="e.g., 100">
+                        <small class="text-muted">Number of shares</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tradeType" class="form-label">Trade Type <span class="text-danger">*</span></label>
+                        <select class="form-select" id="tradeType" required>
+                            <option value="LONG">Long (Buy)</option>
+                            <option value="SHORT">Short (Sell)</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-info small mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Trade will be added to your open positions with automatic calculations for stop loss, R-Multiple, and SBE.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="saveTradeBtn">
+                    <i class="bi bi-plus-circle me-1"></i>Add Trade
                 </button>
             </div>
         </div>
@@ -1130,7 +1187,8 @@ function displayOpenPositions(data) {
     // Show summary and table
     document.getElementById('openPositionsSummary').classList.remove('d-none');
     document.getElementById('openPositionsTable').classList.remove('d-none');
-    
+    document.getElementById('addTradeButtonContainer').classList.remove('d-none');
+
     // Update summary cards
     updateSummaryCards(data.summary);
     
@@ -1964,6 +2022,86 @@ function showNotification(type, message) {
         }
     }, 5000);
 }
+
+// ==================== Add Manual Trade Logic ====================
+
+const saveTradeBtn = document.getElementById('saveTradeBtn');
+if (saveTradeBtn) {
+    saveTradeBtn.addEventListener('click', saveManualTrade);
+}
+
+async function saveManualTrade() {
+    const symbol = document.getElementById('tradeSymbol').value.trim().toUpperCase();
+    const entryPrice = parseFloat(document.getElementById('tradeEntryPrice').value);
+    const quantity = parseInt(document.getElementById('tradeQuantity').value);
+    const tradeType = document.getElementById('tradeType').value;
+
+    // Validation
+    if (!symbol) {
+        alert('Please enter a symbol');
+        return;
+    }
+    if (!entryPrice || entryPrice <= 0) {
+        alert('Please enter a valid entry price');
+        return;
+    }
+    if (!quantity || quantity <= 0) {
+        alert('Please enter a valid quantity');
+        return;
+    }
+
+    try {
+        saveTradeBtn.disabled = true;
+        saveTradeBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Adding...';
+
+        // Get current risk ratio and time period selections
+        const riskRatioSelect = document.getElementById('riskRatioSelect');
+        const timePeriodSelect = document.getElementById('timePeriodSelect');
+        const riskRatio = riskRatioSelect ? riskRatioSelect.value : 'none';
+        const timePeriod = timePeriodSelect ? timePeriodSelect.value : 'since_inception';
+
+        const response = await fetch(`/api/manual-trade/${SESSION_ID}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                symbol,
+                entry_price: entryPrice,
+                quantity,
+                trade_type: tradeType,
+                risk_ratio: riskRatio,
+                time_period: timePeriod
+            })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addTradeModal'));
+            modal.hide();
+
+            // Reset form
+            document.getElementById('addTradeForm').reset();
+
+            // Reload positions
+            await loadOpenPositions();
+
+            showNotification('success', `Trade added successfully: ${symbol} (${quantity} shares)`);
+        } else {
+            showNotification('error', result.detail || 'Failed to add trade');
+        }
+    } catch (error) {
+        console.error('Error adding trade:', error);
+        showNotification('error', 'An error occurred while adding the trade');
+    } finally {
+        saveTradeBtn.disabled = false;
+        saveTradeBtn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Add Trade';
+    }
+}
+
+// ==================== End Add Manual Trade Logic ====================
 
 async function autoApplyRiskRatio() {
     const riskRatioSelect = document.getElementById('riskRatioSelect');
