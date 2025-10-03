@@ -1857,10 +1857,10 @@ function updatePositionsWithFreshData(data) {
         // Add shares management buttons (Add/Reduce)
         actionsHtml += `
             <div class="btn-group ms-1" role="group">
-                <button class="btn btn-sm btn-outline-success" onclick="showAddSharesModal('${position.symbol}', '${position.position_type}')" title="Add shares to position">
+                <button class="btn btn-sm btn-success" onclick="showAddSharesModal('${position.symbol}', '${position.position_type}')" title="Add shares to position">
                     <i class="bi bi-plus-circle"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-warning" onclick="showReduceSharesModal('${position.symbol}', '${position.position_type}', ${position.quantity})" title="Reduce shares from position">
+                <button class="btn btn-sm btn-warning" onclick="showReduceSharesModal('${position.symbol}', '${position.position_type}', ${position.quantity})" title="Reduce shares from position">
                     <i class="bi bi-dash-circle"></i>
                 </button>
             </div>
